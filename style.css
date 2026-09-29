@@ -183,6 +183,10 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
   .two-col{grid-template-columns:1fr}
   .field-toolbar,.location-box{display:grid}
   .field-actions{display:grid;grid-template-columns:1fr 1fr}
+  .project-detail-head{grid-template-columns:1fr}
+  .project-detail-head>.btn{justify-self:start}
+  .project-summary-grid{grid-template-columns:1fr 1fr}
+  .project-data-grid{grid-template-columns:1fr}
 }
 
 
@@ -360,3 +364,35 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 }
 .workspace-tab:hover{background:#f3f7f6;color:var(--text)}
 .workspace-tab.active{background:var(--accent-2);color:var(--accent)}
+
+
+.project-open-row{cursor:pointer;transition:.15s ease}
+.project-open-row:hover{border-color:#9fc3b9;background:#f7fbfa;transform:translateY(-1px)}
+.project-row-main{min-width:0;display:grid;gap:5px}
+.project-row-main strong{white-space:normal}
+.project-row-meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}
+#dashboardProjects{max-height:620px;overflow:auto;padding-right:3px}
+
+.project-detail-head{
+  display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:center;margin-bottom:16px
+}
+.project-detail-title h2{margin:0 0 4px;font-size:22px}
+.project-detail-title p{margin:0;color:var(--muted)}
+.project-summary-grid{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px
+}
+.project-summary-grid article{
+  border:1px solid var(--border);border-radius:12px;padding:12px;background:#f8faf9;min-width:0
+}
+.project-summary-grid span{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}
+.project-summary-grid strong{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.project-data-details{
+  margin:0 0 16px;border:1px solid var(--border);border-radius:12px;background:#fbfcfc;overflow:hidden
+}
+.project-data-details>summary{
+  cursor:pointer;padding:12px 14px;font-weight:800;color:#31433d;user-select:none
+}
+.project-data-details[open]>summary{border-bottom:1px solid var(--border)}
+.project-data-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:14px}
+.project-data-grid .upload-group{margin:0;padding:0;border:0}
