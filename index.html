@@ -3,481 +3,2437 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+
   <title>JE | Jeolojik-Jeoteknik Saha Takip</title>
+
   <link rel="preconnect" href="https://unpkg.com">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
   <link rel="stylesheet" href="style.css" />
+
+  <style>
+    /* =========================================================
+       ANA EKRAN - VERİLER / NOKTALAR / İŞ TAKİBİ
+       ========================================================= */
+
+    .dashboard-switch {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .dashboard-switch-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .dashboard-switch-btn:hover {
+      background: #f3f7f6;
+    }
+
+    .dashboard-switch-btn.active {
+      background: var(--accent-2);
+      color: var(--accent);
+      border-color: #9fc3b9;
+    }
+
+    .dashboard-panel.hidden {
+      display: none !important;
+    }
+
+    .dashboard-map-panel {
+      margin-top: 14px;
+    }
+
+    /* Nokta istatistikleri */
+
+    .dashboard-point-stats {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .dashboard-point-card {
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 13px;
+      padding: 15px;
+    }
+
+    .dashboard-point-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dashboard-point-card strong {
+      display: block;
+      margin-top: 6px;
+      font-size: 26px;
+    }
+
+    .dashboard-point-card.planned {
+      border-left: 5px solid #9aa3ad;
+    }
+
+    .dashboard-point-card.active {
+      border-left: 5px solid #e0b100;
+    }
+
+    .dashboard-point-card.review {
+      border-left: 5px solid #3b82f6;
+    }
+
+    .dashboard-point-card.done {
+      border-left: 5px solid #22a06b;
+    }
+
+    /* İş takip diyagramı */
+
+    .tracking-chart {
+      display: grid;
+      gap: 12px;
+    }
+
+    .track-row {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 14px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .track-row:hover {
+      border-color: #9fc3b9;
+      background: #f8fbfa;
+    }
+
+    .track-row-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 9px;
+    }
+
+    .track-row-top strong {
+      min-width: 0;
+    }
+
+    .track-row-top span {
+      font-weight: 800;
+      color: var(--accent);
+    }
+
+    .track-meta {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 7px;
+    }
+
+    @media (max-width: 720px) {
+      .dashboard-switch {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .dashboard-switch-btn {
+        padding: 9px 6px;
+        font-size: 13px;
+      }
+
+      .dashboard-point-stats {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
 </head>
+
 <body>
+
+  <!-- =========================================================
+       GİRİŞ
+       ========================================================= -->
+
   <section id="authScreen" class="auth-screen">
+
     <div class="auth-card">
+
       <div class="auth-brand">
+
         <div class="brand-mark large">JE</div>
+
         <div>
           <h1>JE Saha Takip</h1>
           <p>Jeolojik - Jeoteknik çalışma yönetimi</p>
         </div>
+
       </div>
+
       <form id="loginForm">
+
         <label class="field-label">E-posta</label>
-        <input id="loginEmail" class="input" type="email" autocomplete="username" required />
+
+        <input
+          id="loginEmail"
+          class="input"
+          type="email"
+          autocomplete="username"
+          required
+        />
+
         <label class="field-label">Şifre</label>
-        <input id="loginPassword" class="input" type="password" autocomplete="current-password" required />
-        <button id="loginBtn" class="btn primary full" type="submit">Giriş Yap</button>
+
+        <input
+          id="loginPassword"
+          class="input"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button
+          id="loginBtn"
+          class="btn primary full"
+          type="submit"
+        >
+          Giriş Yap
+        </button>
+
         <div id="loginMessage" class="login-message"></div>
+
       </form>
+
     </div>
+
   </section>
 
+
+  <!-- =========================================================
+       UYGULAMA
+       ========================================================= -->
+
   <div id="appShell" class="app-hidden">
+
+    <!-- =======================================================
+         SOL MENÜ
+         ======================================================= -->
+
     <aside class="sidebar">
-      <button id="toggleAppSidebarBtn" class="sidebar-toggle" type="button" title="Menüyü daralt">‹</button>
+
+      <button
+        id="toggleAppSidebarBtn"
+        class="sidebar-toggle"
+        type="button"
+        title="Menüyü daralt"
+      >
+        ‹
+      </button>
+
       <div class="brand">
+
         <div class="brand-mark">JE</div>
+
         <div>
           <strong>JE</strong>
           <small>Jeolojik-Jeoteknik Saha Takip</small>
         </div>
+
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="dashboard">▣ <span>İşler</span></button>
-        <button class="nav-item admin-only" data-view="users">⚙ <span>Yönetim</span></button>
+
+        <button
+          class="nav-item active"
+          data-view="dashboard"
+        >
+          ▣ <span>İşler</span>
+        </button>
+
+        <button
+          class="nav-item admin-only"
+          data-view="users"
+        >
+          ⚙ <span>Yönetim</span>
+        </button>
+
       </nav>
 
       <div class="sidebar-bottom">
+
         <div class="signed-user">
+
           <strong id="signedUserName">—</strong>
+
           <small id="signedUserEmail">—</small>
-          <span id="sidebarRoleBadge" class="sidebar-role">—</span>
+
+          <span
+            id="sidebarRoleBadge"
+            class="sidebar-role"
+          >
+            —
+          </span>
+
         </div>
-        <button id="logoutBtn" class="btn logout-btn">Çıkış Yap</button>
+
+        <button
+          id="logoutBtn"
+          class="btn logout-btn"
+        >
+          Çıkış Yap
+        </button>
+
       </div>
+
     </aside>
 
+
+    <!-- =======================================================
+         ANA İÇERİK
+         ======================================================= -->
+
     <main class="main">
+
+      <!-- ÜST BAŞLIK -->
+
       <header class="topbar">
+
         <div>
+
           <h1 id="pageTitle">İşler</h1>
-          <p id="pageSubtitle">Bir işi seçerek durum, harita ve saha noktalarına geçin.</p>
+
+          <p id="pageSubtitle">
+            Bir işi seçerek durum, harita ve saha noktalarına geçin.
+          </p>
+
         </div>
+
         <div class="topbar-actions">
-          <span class="role-badge" id="roleBadge">—</span>
-          <button id="newProjectBtn" class="btn primary admin-only">+ Yeni İş</button>
+
+          <span
+            class="role-badge"
+            id="roleBadge"
+          >
+            —
+          </span>
+
+          <button
+            id="newProjectBtn"
+            class="btn primary admin-only"
+          >
+            + Yeni İş
+          </button>
+
         </div>
+
       </header>
 
-      <section id="dashboardView" class="view active">
-        <div class="stats-grid">
-          <article class="stat-card"><span>Aktif İş</span><strong id="statProjects">0</strong><small>Toplam kayıt</small></article>
-          <article class="stat-card"><span>Toplam Sondaj</span><strong id="statBoreholes">0</strong><small>İçe aktarılan nokta</small></article>
-          <article class="stat-card"><span>Toplam Alan</span><strong id="statArea">0 ha</strong><small>İşlerin toplam alanı</small></article>
-          <article class="stat-card"><span>Kontrol Bekleyen</span><strong id="statPending">0</strong><small>Saha kayıtları</small></article>
+
+      <!-- =====================================================
+           ANA İŞLER EKRANI
+           ===================================================== -->
+
+      <section
+        id="dashboardView"
+        class="view active"
+      >
+
+        <!-- ANA 3 BUTON -->
+
+        <div class="dashboard-switch">
+
+          <button
+            class="dashboard-switch-btn active"
+            data-dashboard-panel="overview"
+            type="button"
+          >
+            Veriler
+          </button>
+
+          <button
+            class="dashboard-switch-btn"
+            data-dashboard-panel="points"
+            type="button"
+          >
+            Noktalar
+          </button>
+
+          <button
+            class="dashboard-switch-btn"
+            data-dashboard-panel="tracking"
+            type="button"
+          >
+            İş Takibi
+          </button>
+
         </div>
 
-        <div class="dashboard-grid">
+
+        <!-- ===================================================
+             1 - VERİLER
+             =================================================== -->
+
+        <div
+          id="dashboardOverviewPanel"
+          class="dashboard-panel"
+        >
+
+          <div class="stats-grid">
+
+            <article class="stat-card">
+
+              <span>Aktif İş</span>
+
+              <strong id="statProjects">0</strong>
+
+              <small>Toplam kayıt</small>
+
+            </article>
+
+
+            <article class="stat-card">
+
+              <span>Toplam Sondaj</span>
+
+              <strong id="statBoreholes">0</strong>
+
+              <small>Sondaj noktaları</small>
+
+            </article>
+
+
+            <article class="stat-card">
+
+              <span>Toplam Alan</span>
+
+              <strong id="statArea">0 ha</strong>
+
+              <small>İşlerin toplam alanı</small>
+
+            </article>
+
+
+            <article class="stat-card">
+
+              <span>Kontrol Bekleyen</span>
+
+              <strong id="statPending">0</strong>
+
+              <small>Saha kayıtları</small>
+
+            </article>
+
+          </div>
+
+
           <section class="panel">
+
             <div class="panel-head">
-              <div><h2>İşler</h2><p>Bir işe tıklayın; iş durumu, harita ve saha noktaları aynı ekranda açılsın.</p></div>
+
+              <div>
+
+                <h2>İşler</h2>
+
+                <p>
+                  Bir işe tıklayın; iş durumu,
+                  harita ve saha noktaları açılsın.
+                </p>
+
+              </div>
+
+
               <div class="panel-actions admin-only">
-                <button class="btn ghost" id="dashboardExcelImportBtn" type="button">Excel'den Aktar</button>
-                <button class="btn ghost" id="dashboardExcelExportBtn" type="button">Excel'e Aktar</button>
+
+                <button
+                  class="btn ghost"
+                  id="dashboardExcelImportBtn"
+                  type="button"
+                >
+                  Excel'den Aktar
+                </button>
+
+                <button
+                  class="btn ghost"
+                  id="dashboardExcelExportBtn"
+                  type="button"
+                >
+                  Excel'e Aktar
+                </button>
+
               </div>
+
             </div>
-            <div id="dashboardProjects" class="project-list empty-state">Henüz iş oluşturulmadı.</div>
+
+
+            <div
+              id="dashboardProjects"
+              class="project-list empty-state"
+            >
+              Henüz iş oluşturulmadı.
+            </div>
+
           </section>
 
-          <section class="panel map-panel">
-            <div class="panel-head">
-              <div><h2>Genel Harita</h2><p>Çalışma alanları ve sondaj noktaları.</p></div>
-            </div>
-            <div id="dashboardMap" class="map"></div>
-          </section>
         </div>
+
+
+        <!-- ===================================================
+             2 - NOKTALAR
+             =================================================== -->
+
+        <div
+          id="dashboardPointsPanel"
+          class="dashboard-panel hidden"
+        >
+
+          <section class="panel">
+
+            <div class="panel-head">
+
+              <div>
+
+                <h2>Saha Noktaları</h2>
+
+                <p>
+                  Tüm işler içindeki sondaj ve jeoteknik
+                  noktalarının genel durumu.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div class="dashboard-point-stats">
+
+              <article class="dashboard-point-card planned">
+
+                <span>Planlanan</span>
+
+                <strong id="dashPointPlanned">0</strong>
+
+              </article>
+
+
+              <article class="dashboard-point-card active">
+
+                <span>Sahada</span>
+
+                <strong id="dashPointActive">0</strong>
+
+              </article>
+
+
+              <article class="dashboard-point-card review">
+
+                <span>Kontrol</span>
+
+                <strong id="dashPointReview">0</strong>
+
+              </article>
+
+
+              <article class="dashboard-point-card done">
+
+                <span>Tamamlandı</span>
+
+                <strong id="dashPointDone">0</strong>
+
+              </article>
+
+            </div>
+
+
+            <div
+              id="dashboardMap"
+              class="map"
+            ></div>
+
+          </section>
+
+        </div>
+
+
+        <!-- ===================================================
+             3 - İŞ TAKİBİ
+             =================================================== -->
+
+        <div
+          id="dashboardTrackingPanel"
+          class="dashboard-panel hidden"
+        >
+
+          <section class="panel">
+
+            <div class="panel-head">
+
+              <div>
+
+                <h2>İş Takibi</h2>
+
+                <p>
+                  İşlerin sondaj tamamlama ve ilerleme
+                  oranlarını karşılaştırın.
+                </p>
+
+              </div>
+
+            </div>
+
+
+            <div
+              id="trackingChart"
+              class="tracking-chart"
+            >
+              <div class="empty-state">
+                İşler yükleniyor...
+              </div>
+            </div>
+
+          </section>
+
+        </div>
+
       </section>
 
-      <section id="projectsView" class="view">
+
+      <!-- =====================================================
+           ESKİ / YÖNETİMSEL İŞ LİSTESİ
+           APP.JS İÇİN KORUNUYOR
+           ===================================================== -->
+
+      <section
+        id="projectsView"
+        class="view"
+      >
+
         <section class="panel">
+
           <div class="panel-head">
-            <div><h2>İş Listesi</h2><p>Firma kullanıcıları yalnızca kendilerine atanmış işleri görür.</p></div>
-            <div class="panel-actions admin-only">
-              <input id="excelImportInput" type="file" accept=".xlsx,.xls,.csv" hidden />
-              <button class="btn secondary" id="excelImportBtn">Excel'den Aktar</button>
-              <button class="btn ghost" id="excelExportBtn">Excel'e Aktar</button>
-              <button class="btn primary" id="newProjectBtn2">+ Yeni İş</button>
+
+            <div>
+
+              <h2>İş Listesi</h2>
+
+              <p>
+                Firma kullanıcıları yalnızca
+                kendilerine atanmış işleri görür.
+              </p>
+
             </div>
+
+
+            <div class="panel-actions admin-only">
+
+              <input
+                id="excelImportInput"
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                hidden
+              />
+
+              <button
+                class="btn secondary"
+                id="excelImportBtn"
+              >
+                Excel'den Aktar
+              </button>
+
+              <button
+                class="btn ghost"
+                id="excelExportBtn"
+              >
+                Excel'e Aktar
+              </button>
+
+              <button
+                class="btn primary"
+                id="newProjectBtn2"
+              >
+                + Yeni İş
+              </button>
+
+            </div>
+
           </div>
+
+
           <div class="table-wrap">
+
             <table>
+
               <thead>
-                <tr><th>İş</th><th>Alan</th><th>Firma</th><th>Sondaj</th><th>Durum</th><th>İlerleme</th><th></th></tr>
+
+                <tr>
+
+                  <th>İş</th>
+                  <th>Alan</th>
+                  <th>Firma</th>
+                  <th>Sondaj</th>
+                  <th>Durum</th>
+                  <th>İlerleme</th>
+                  <th></th>
+
+                </tr>
+
               </thead>
+
               <tbody id="projectsTableBody"></tbody>
+
             </table>
+
           </div>
+
         </section>
+
       </section>
 
-      <section id="mapView" class="view">
+
+      <!-- =====================================================
+           HARİTA EKRANI
+           APP.JS İÇİN KORUNUYOR
+           ===================================================== -->
+
+      <section
+        id="mapView"
+        class="view"
+      >
+
         <div class="map-layout">
+
           <aside class="map-side panel">
+
             <div class="panel-head compact">
-              <div><h2>Harita</h2><p>Bir iş seçin ve veri yükleyin.</p></div>
+
+              <div>
+
+                <h2>Harita</h2>
+
+                <p>Bir iş seçin ve veri yükleyin.</p>
+
+              </div>
+
             </div>
 
-            <label class="field-label">İş</label>
-            <select id="mapProjectSelect" class="input"></select>
+
+            <label class="field-label">
+              İş
+            </label>
+
+            <select
+              id="mapProjectSelect"
+              class="input"
+            ></select>
+
 
             <div class="upload-group admin-only">
-              <label class="field-label">Çalışma alanı KML/KMZ</label>
-              <input id="boundaryFile" type="file" accept=".kml,.kmz" class="file-input" />
-              <button id="importBoundaryBtn" class="btn secondary full">Yükle / Değiştir</button>
+
+              <label class="field-label">
+                Çalışma alanı KML/KMZ
+              </label>
+
+              <input
+                id="boundaryFile"
+                type="file"
+                accept=".kml,.kmz"
+                class="file-input"
+              />
+
+              <button
+                id="importBoundaryBtn"
+                class="btn secondary full"
+              >
+                Yükle / Değiştir
+              </button>
+
+
               <div class="layer-current">
-                <span id="boundaryLayerInfo">Yüklü çalışma alanı yok</span>
-                <button id="deleteBoundaryLayerBtn" class="btn danger mini" type="button">Sil</button>
+
+                <span id="boundaryLayerInfo">
+                  Yüklü çalışma alanı yok
+                </span>
+
+                <button
+                  id="deleteBoundaryLayerBtn"
+                  class="btn danger mini"
+                  type="button"
+                >
+                  Sil
+                </button>
+
               </div>
+
             </div>
 
+
             <div class="upload-group admin-only">
-              <label class="field-label">Sondaj noktaları KML/KMZ</label>
-              <input id="boreholeFile" type="file" accept=".kml,.kmz" class="file-input" />
-              <button id="importBoreholesBtn" class="btn secondary full">Yükle / Değiştir</button>
+
+              <label class="field-label">
+                Sondaj noktaları KML/KMZ
+              </label>
+
+              <input
+                id="boreholeFile"
+                type="file"
+                accept=".kml,.kmz"
+                class="file-input"
+              />
+
+              <button
+                id="importBoreholesBtn"
+                class="btn secondary full"
+              >
+                Yükle / Değiştir
+              </button>
+
+
               <div class="layer-current">
-                <span id="boreholeLayerInfo">Yüklü sondaj KML/KMZ yok</span>
-                <button id="deleteBoreholeLayerBtn" class="btn danger mini" type="button">Sil</button>
+
+                <span id="boreholeLayerInfo">
+                  Yüklü sondaj KML/KMZ yok
+                </span>
+
+                <button
+                  id="deleteBoreholeLayerBtn"
+                  class="btn danger mini"
+                  type="button"
+                >
+                  Sil
+                </button>
+
               </div>
+
             </div>
+
 
             <div class="info-box">
-              <strong id="mapProjectName">İş seçilmedi</strong>
-              <span id="mapProjectMeta">—</span>
-              <span id="mapBoreholeCount">0 sondaj</span>
+
+              <strong id="mapProjectName">
+                İş seçilmedi
+              </strong>
+
+              <span id="mapProjectMeta">
+                —
+              </span>
+
+              <span id="mapBoreholeCount">
+                0 sondaj
+              </span>
+
             </div>
+
           </aside>
-          <button id="toggleMapSidebarBtn" class="map-side-toggle" type="button" title="Sol paneli aç/kapat">‹</button>
-          <div id="mainMap" class="map main-map"></div>
+
+
+          <button
+            id="toggleMapSidebarBtn"
+            class="map-side-toggle"
+            type="button"
+            title="Sol paneli aç/kapat"
+          >
+            ‹
+          </button>
+
+
+          <div
+            id="mainMap"
+            class="map main-map"
+          ></div>
+
         </div>
+
       </section>
 
-      <section id="boreholesView" class="view">
+
+      <!-- =====================================================
+           İŞ DETAYI / SAHA
+           ===================================================== -->
+
+      <section
+        id="boreholesView"
+        class="view"
+      >
+
         <section class="panel">
+
+          <!-- İŞ BAŞLIĞI -->
+
           <div class="project-detail-head">
-            <button id="backToJobsBtn" class="btn ghost" type="button">← İşlere Dön</button>
+
+            <button
+              id="backToJobsBtn"
+              class="btn ghost"
+              type="button"
+            >
+              ← İşlere Dön
+            </button>
+
+
             <div class="project-detail-title">
-              <h2 id="projectDetailTitle">İş</h2>
-              <p id="projectDetailMeta">—</p>
+
+              <h2 id="projectDetailTitle">
+                İş
+              </h2>
+
+              <p id="projectDetailMeta">
+                —
+              </p>
+
             </div>
-            <button id="editCurrentProjectBtn" class="btn secondary admin-only" type="button">İşi Düzenle</button>
+
+
+            <button
+              id="editCurrentProjectBtn"
+              class="btn secondary admin-only"
+              type="button"
+            >
+              İşi Düzenle
+            </button>
+
           </div>
+
+
+          <!-- İŞ ÖZETİ -->
 
           <div class="project-summary-grid">
-            <article><span>Durum</span><strong id="projectDetailStatus">—</strong></article>
-            <article><span>Alan</span><strong id="projectDetailArea">—</strong></article>
-            <article><span>Firma</span><strong id="projectDetailCompany">—</strong></article>
-            <article><span>İlerleme</span><strong id="projectDetailProgress">%0</strong></article>
+
+            <article>
+
+              <span>Durum</span>
+
+              <strong id="projectDetailStatus">
+                —
+              </strong>
+
+            </article>
+
+
+            <article>
+
+              <span>Alan</span>
+
+              <strong id="projectDetailArea">
+                —
+              </strong>
+
+            </article>
+
+
+            <article>
+
+              <span>Firma</span>
+
+              <strong id="projectDetailCompany">
+                —
+              </strong>
+
+            </article>
+
+
+            <article>
+
+              <span>İlerleme</span>
+
+              <strong id="projectDetailProgress">
+                %0
+              </strong>
+
+            </article>
+
           </div>
+
+
+          <!-- SAHA BUTONLARI -->
 
           <div class="field-toolbar">
+
             <div class="location-box">
+
               <div>
+
                 <strong>Konum</strong>
-                <span id="currentLocationInfo">Konum alınmadı</span>
+
+                <span id="currentLocationInfo">
+                  Konum alınmadı
+                </span>
+
               </div>
-              <button id="locateMeBtn" class="btn ghost" type="button">Konumumu Göster</button>
+
+
+              <button
+                id="locateMeBtn"
+                class="btn ghost"
+                type="button"
+              >
+                Konumumu Göster
+              </button>
+
             </div>
+
+
             <div class="field-actions">
-              <button id="addBoreholePointBtn" class="btn primary" type="button">+ Sondaj Noktası</button>
-              <button id="addGeotechnicalPointBtn" class="btn secondary" type="button">+ Jeoteknik Nokta</button>
+
+              <button
+                id="addBoreholePointBtn"
+                class="btn primary"
+                type="button"
+              >
+                + Sondaj Noktası
+              </button>
+
+
+              <button
+                id="addGeotechnicalPointBtn"
+                class="btn secondary"
+                type="button"
+              >
+                + Jeoteknik Nokta
+              </button>
+
             </div>
+
           </div>
+
+
+          <!-- NOKTA DURUM KARTLARI -->
 
           <div class="borehole-stats">
-            <button class="borehole-stat-card active" type="button" data-bh-filter="all">
-              <span>Toplam</span><strong id="bhStatTotal">0</strong>
+
+            <button
+              class="borehole-stat-card active"
+              type="button"
+              data-bh-filter="all"
+            >
+
+              <span>Toplam</span>
+
+              <strong id="bhStatTotal">
+                0
+              </strong>
+
             </button>
-            <button class="borehole-stat-card" type="button" data-bh-filter="Planlandı">
-              <span>Planlandı</span><strong id="bhStatPlanned">0</strong>
+
+
+            <button
+              class="borehole-stat-card"
+              type="button"
+              data-bh-filter="Planlandı"
+            >
+
+              <span>Planlandı</span>
+
+              <strong id="bhStatPlanned">
+                0
+              </strong>
+
             </button>
-            <button class="borehole-stat-card" type="button" data-bh-filter="Sahada">
-              <span>Sahada</span><strong id="bhStatActive">0</strong>
+
+
+            <button
+              class="borehole-stat-card"
+              type="button"
+              data-bh-filter="Sahada"
+            >
+
+              <span>Sahada</span>
+
+              <strong id="bhStatActive">
+                0
+              </strong>
+
             </button>
-            <button class="borehole-stat-card" type="button" data-bh-filter="Tamamlandı">
-              <span>Tamamlandı</span><strong id="bhStatDone">0</strong>
+
+
+            <button
+              class="borehole-stat-card"
+              type="button"
+              data-bh-filter="Kontrol Bekliyor"
+            >
+
+              <span>Kontrol</span>
+
+              <strong id="bhStatReview">
+                0
+              </strong>
+
             </button>
+
+
+            <button
+              class="borehole-stat-card"
+              type="button"
+              data-bh-filter="Tamamlandı"
+            >
+
+              <span>Tamamlandı</span>
+
+              <strong id="bhStatDone">
+                0
+              </strong>
+
+            </button>
+
           </div>
+
+
+          <!-- İŞ İLERLEMESİ -->
 
           <div class="borehole-progress-panel">
+
             <div class="borehole-progress-head">
-              <strong>İş İlerlemesi</strong>
-              <span id="bhProgressText">0 / 0 tamamlandı · %0</span>
+
+              <strong>
+                İş İlerlemesi
+              </strong>
+
+              <span id="bhProgressText">
+                0 / 0 tamamlandı · %0
+              </span>
+
             </div>
-            <div class="progress borehole-progress"><span id="bhProgressBar" style="width:0%"></span></div>
+
+
+            <div class="progress borehole-progress">
+
+              <span
+                id="bhProgressBar"
+                style="width:0%"
+              ></span>
+
+            </div>
+
           </div>
+
+
+          <!-- KML / KMZ -->
 
           <details class="project-data-details admin-only">
-            <summary>Harita Verileri / KML-KMZ</summary>
+
+            <summary>
+              Harita Verileri / KML-KMZ
+            </summary>
+
+
             <div class="project-data-grid">
+
               <div class="upload-group">
-                <label class="field-label">Çalışma alanı KML/KMZ</label>
-                <input id="detailBoundaryFile" type="file" accept=".kml,.kmz" class="file-input" />
-                <button id="detailImportBoundaryBtn" class="btn secondary full" type="button">Yükle / Değiştir</button>
+
+                <label class="field-label">
+                  Çalışma alanı KML/KMZ
+                </label>
+
+                <input
+                  id="detailBoundaryFile"
+                  type="file"
+                  accept=".kml,.kmz"
+                  class="file-input"
+                />
+
+                <button
+                  id="detailImportBoundaryBtn"
+                  class="btn secondary full"
+                  type="button"
+                >
+                  Yükle / Değiştir
+                </button>
+
+
                 <div class="layer-current">
-                  <span id="detailBoundaryLayerInfo">Yüklü çalışma alanı yok</span>
-                  <button id="detailDeleteBoundaryBtn" class="btn danger mini" type="button">Sil</button>
+
+                  <span id="detailBoundaryLayerInfo">
+                    Yüklü çalışma alanı yok
+                  </span>
+
+                  <button
+                    id="detailDeleteBoundaryBtn"
+                    class="btn danger mini"
+                    type="button"
+                  >
+                    Sil
+                  </button>
+
                 </div>
+
               </div>
+
+
               <div class="upload-group">
-                <label class="field-label">Sondaj noktaları KML/KMZ</label>
-                <input id="detailBoreholeFile" type="file" accept=".kml,.kmz" class="file-input" />
-                <button id="detailImportBoreholesBtn" class="btn secondary full" type="button">Yükle / Değiştir</button>
+
+                <label class="field-label">
+                  Sondaj noktaları KML/KMZ
+                </label>
+
+                <input
+                  id="detailBoreholeFile"
+                  type="file"
+                  accept=".kml,.kmz"
+                  class="file-input"
+                />
+
+                <button
+                  id="detailImportBoreholesBtn"
+                  class="btn secondary full"
+                  type="button"
+                >
+                  Yükle / Değiştir
+                </button>
+
+
                 <div class="layer-current">
-                  <span id="detailBoreholeLayerInfo">Yüklü sondaj KML/KMZ yok</span>
-                  <button id="detailDeleteBoreholesBtn" class="btn danger mini" type="button">Sil</button>
+
+                  <span id="detailBoreholeLayerInfo">
+                    Yüklü sondaj KML/KMZ yok
+                  </span>
+
+                  <button
+                    id="detailDeleteBoreholesBtn"
+                    class="btn danger mini"
+                    type="button"
+                  >
+                    Sil
+                  </button>
+
                 </div>
+
               </div>
+
             </div>
+
           </details>
 
-          <div id="boreholeMap" class="map borehole-map"></div>
+
+          <!-- İŞ HARİTASI -->
+
+          <div
+            id="boreholeMap"
+            class="map borehole-map"
+          ></div>
+
+
+          <!-- NOKTA TABLOSU -->
 
           <div class="table-wrap borehole-table-wrap">
+
             <table>
+
               <thead>
+
                 <tr>
+
                   <th>Nokta</th>
+
                   <th>Tür</th>
+
                   <th>Koordinat</th>
+
                   <th>Planlanan</th>
+
                   <th>Gerçekleşen</th>
+
                   <th>Durum</th>
+
                   <th></th>
+
                 </tr>
+
               </thead>
+
+
               <tbody id="boreholesTableBody"></tbody>
+
             </table>
+
           </div>
+
         </section>
+
       </section>
 
-      <section id="usersView" class="view">
+
+      <!-- =====================================================
+           YÖNETİM
+           ===================================================== -->
+
+      <section
+        id="usersView"
+        class="view"
+      >
+
         <section class="panel">
+
           <div class="panel-head">
+
             <div>
+
               <h2>Yönetim</h2>
-              <p>Kullanıcı, firma ve yetki ayarlarını buradan yönetin.</p>
+
+              <p>
+                Kullanıcı, firma ve yetki ayarlarını
+                buradan yönetin.
+              </p>
+
             </div>
+
           </div>
+
+
           <div class="role-cards">
-            <article class="role-card"><h3>Yönetici</h3><p>Tüm işlerde görüntüleme, veri girişi, KML/KMZ yükleme ve kontrol yetkisine sahiptir.</p></article>
-            <article class="role-card"><h3>Firma</h3><p>Yalnızca project_members tablosunda kendisine atanmış işleri görebilir ve izin verilen saha verilerini girebilir.</p></article>
+
+            <article class="role-card">
+
+              <h3>Yönetici</h3>
+
+              <p>
+                Tüm işlerde görüntüleme,
+                veri girişi, KML/KMZ yükleme
+                ve kontrol yetkisine sahiptir.
+              </p>
+
+            </article>
+
+
+            <article class="role-card">
+
+              <h3>Firma</h3>
+
+              <p>
+                Yalnızca kendisine atanmış
+                işleri görebilir ve izin verilen
+                saha verilerini girebilir.
+              </p>
+
+            </article>
+
           </div>
+
         </section>
+
       </section>
+
     </main>
+
   </div>
 
-  <div id="projectModal" class="modal-backdrop hidden">
-    <div class="modal">
-      <div class="modal-head">
-        <div><h2 id="projectModalTitle">Yeni İş Oluştur</h2><p id="projectModalSubtitle">İşi kısa bir ad ve hektar bilgisiyle kaydedin.</p></div>
-        <button id="closeModalBtn" class="icon-btn">×</button>
-      </div>
-      <form id="projectForm">
-        <label class="field-label">İş adı</label>
-        <input id="projectName" class="input" placeholder="Örn. Buca - Doğancılar - 1,45 ha" required maxlength="120" />
-        <label class="field-label">Alan (ha)</label>
-        <input id="projectArea" class="input" type="number" min="0" step="0.01" placeholder="245" required />
-        <label class="field-label">Firma</label>
-        <input id="projectCompany" class="input" placeholder="Örn. ABC Jeoteknik" required maxlength="80" />
-        <label class="field-label">Durum</label>
-        <select id="projectStatus" class="input">
-          <option>Planlandı</option><option>Sahada</option><option>Ofis Kontrolünde</option><option>Tamamlandı</option>
-        </select>
-        <div class="modal-actions">
-          <button type="button" id="cancelModalBtn" class="btn ghost">Vazgeç</button>
-          <button id="projectSaveBtn" type="submit" class="btn primary">İşi Kaydet</button>
-        </div>
-      </form>
-    </div>
-  </div>
 
-  <div id="pointModal" class="modal-backdrop hidden">
+  <!-- =========================================================
+       YENİ / DÜZENLE İŞ MODALI
+       ========================================================= -->
+
+  <div
+    id="projectModal"
+    class="modal-backdrop hidden"
+  >
+
     <div class="modal">
+
       <div class="modal-head">
+
         <div>
-          <h2 id="pointModalTitle">Yeni Saha Noktası</h2>
-          <p id="pointModalSubtitle">Konumu cihazdan alabilir veya koordinatı elle girebilirsiniz.</p>
+
+          <h2 id="projectModalTitle">
+            Yeni İş Oluştur
+          </h2>
+
+          <p id="projectModalSubtitle">
+            İşi kısa bir ad ve hektar bilgisiyle kaydedin.
+          </p>
+
         </div>
-        <button id="closePointModalBtn" class="icon-btn">×</button>
+
+
+        <button
+          id="closeModalBtn"
+          class="icon-btn"
+        >
+          ×
+        </button>
+
       </div>
 
-      <form id="pointForm" class="form-grid">
-        <input id="pointType" type="hidden" />
 
-        <label class="field-label">Nokta kodu</label>
-        <input id="pointCode" class="input" required maxlength="40" placeholder="Örn. SK-16 / JT-01" />
+      <form id="projectForm">
+
+        <label class="field-label">
+          İş adı
+        </label>
+
+        <input
+          id="projectName"
+          class="input"
+          placeholder="Örn. Buca - Doğancılar - 1,45 ha"
+          required
+          maxlength="120"
+        />
+
+
+        <label class="field-label">
+          Alan (ha)
+        </label>
+
+        <input
+          id="projectArea"
+          class="input"
+          type="number"
+          min="0"
+          step="0.01"
+          placeholder="245"
+          required
+        />
+
+
+        <label class="field-label">
+          Firma
+        </label>
+
+        <input
+          id="projectCompany"
+          class="input"
+          placeholder="Örn. ABC Jeoteknik"
+          required
+          maxlength="80"
+        />
+
+
+        <label class="field-label">
+          Durum
+        </label>
+
+        <select
+          id="projectStatus"
+          class="input"
+        >
+
+          <option>
+            Planlandı
+          </option>
+
+          <option>
+            Sahada
+          </option>
+
+          <option>
+            Ofis Kontrolünde
+          </option>
+
+          <option>
+            Tamamlandı
+          </option>
+
+        </select>
+
+
+        <div class="modal-actions">
+
+          <button
+            type="button"
+            id="cancelModalBtn"
+            class="btn ghost"
+          >
+            Vazgeç
+          </button>
+
+          <button
+            id="projectSaveBtn"
+            type="submit"
+            class="btn primary"
+          >
+            İşi Kaydet
+          </button>
+
+        </div>
+
+      </form>
+
+    </div>
+
+  </div>
+
+
+  <!-- =========================================================
+       YENİ SAHA NOKTASI
+       ========================================================= -->
+
+  <div
+    id="pointModal"
+    class="modal-backdrop hidden"
+  >
+
+    <div class="modal">
+
+      <div class="modal-head">
+
+        <div>
+
+          <h2 id="pointModalTitle">
+            Yeni Saha Noktası
+          </h2>
+
+          <p id="pointModalSubtitle">
+            Konumu cihazdan alabilir
+            veya koordinatı elle girebilirsiniz.
+          </p>
+
+        </div>
+
+
+        <button
+          id="closePointModalBtn"
+          class="icon-btn"
+        >
+          ×
+        </button>
+
+      </div>
+
+
+      <form
+        id="pointForm"
+        class="form-grid"
+      >
+
+        <input
+          id="pointType"
+          type="hidden"
+        />
+
+
+        <label class="field-label">
+          Nokta kodu
+        </label>
+
+        <input
+          id="pointCode"
+          class="input"
+          required
+          maxlength="40"
+          placeholder="Örn. SK-16 / JT-01"
+        />
+
 
         <div id="pointMethodGroup">
-          <label class="field-label">Jeoteknik yöntem</label>
-          <select id="pointMethod" class="input">
-            <option value="">Seçiniz</option>
+
+          <label class="field-label">
+            Jeoteknik yöntem
+          </label>
+
+          <select
+            id="pointMethod"
+            class="input"
+          >
+
+            <option value="">
+              Seçiniz
+            </option>
+
             <option>MASW</option>
+
             <option>ReMi</option>
-            <option>Mikrotremor / HVSR</option>
-            <option>Sismik Kırılma</option>
-            <option>ERT / Özdirenç</option>
-            <option>Presiyometre</option>
-            <option>Diğer</option>
+
+            <option>
+              Mikrotremor / HVSR
+            </option>
+
+            <option>
+              Sismik Kırılma
+            </option>
+
+            <option>
+              ERT / Özdirenç
+            </option>
+
+            <option>
+              Presiyometre
+            </option>
+
+            <option>
+              Diğer
+            </option>
+
           </select>
+
         </div>
+
 
         <div class="two-col">
+
           <div>
-            <label class="field-label">Enlem</label>
-            <input id="pointLat" class="input" type="number" step="0.0000001" required />
+
+            <label class="field-label">
+              Enlem
+            </label>
+
+            <input
+              id="pointLat"
+              class="input"
+              type="number"
+              step="0.0000001"
+              required
+            />
+
           </div>
+
+
           <div>
-            <label class="field-label">Boylam</label>
-            <input id="pointLng" class="input" type="number" step="0.0000001" required />
+
+            <label class="field-label">
+              Boylam
+            </label>
+
+            <input
+              id="pointLng"
+              class="input"
+              type="number"
+              step="0.0000001"
+              required
+            />
+
           </div>
+
         </div>
+
 
         <div class="point-location-actions">
-          <button id="useCurrentLocationBtn" class="btn secondary" type="button">Mevcut Konumu Kullan</button>
-          <button id="pickPointFromMapBtn" class="btn ghost" type="button">Haritadan Seç</button>
-        </div>
-        <small id="pointLocationAccuracy" class="muted">Konum doğruluğu: —</small>
 
-        <label class="field-label">Not</label>
-        <textarea id="pointNotes" class="input textarea" rows="3" placeholder="Nokta ile ilgili not..."></textarea>
+          <button
+            id="useCurrentLocationBtn"
+            class="btn secondary"
+            type="button"
+          >
+            Mevcut Konumu Kullan
+          </button>
+
+          <button
+            id="pickPointFromMapBtn"
+            class="btn ghost"
+            type="button"
+          >
+            Haritadan Seç
+          </button>
+
+        </div>
+
+
+        <small
+          id="pointLocationAccuracy"
+          class="muted"
+        >
+          Konum doğruluğu: —
+        </small>
+
+
+        <label class="field-label">
+          Not
+        </label>
+
+        <textarea
+          id="pointNotes"
+          class="input textarea"
+          rows="3"
+          placeholder="Nokta ile ilgili not..."
+        ></textarea>
+
 
         <div class="modal-actions">
-          <button id="cancelPointModalBtn" class="btn ghost" type="button">Vazgeç</button>
-          <button class="btn primary" type="submit">Noktayı Kaydet</button>
+
+          <button
+            id="cancelPointModalBtn"
+            class="btn ghost"
+            type="button"
+          >
+            Vazgeç
+          </button>
+
+          <button
+            class="btn primary"
+            type="submit"
+          >
+            Noktayı Kaydet
+          </button>
+
         </div>
+
       </form>
+
     </div>
+
   </div>
 
-  <div id="boreholeModal" class="modal-backdrop hidden">
+
+  <!-- =========================================================
+       SONDAJ / JEOTEKNİK NOKTA DETAYI
+       ========================================================= -->
+
+  <div
+    id="boreholeModal"
+    class="modal-backdrop hidden"
+  >
+
     <div class="modal modal-large">
+
       <div class="modal-head">
+
         <div>
-          <h2 id="boreholeModalTitle">Sondaj</h2>
-          <p id="boreholeModalSubtitle">Saha kayıtları</p>
+
+          <h2 id="boreholeModalTitle">
+            Sondaj
+          </h2>
+
+          <p id="boreholeModalSubtitle">
+            Saha kayıtları
+          </p>
+
         </div>
-        <button id="closeBoreholeModalBtn" class="icon-btn">×</button>
+
+
+        <button
+          id="closeBoreholeModalBtn"
+          class="icon-btn"
+        >
+          ×
+        </button>
+
       </div>
+
 
       <div class="borehole-modal-grid">
+
+
+        <!-- SOL TARAF -->
+
         <section>
-          <form id="boreholeForm" class="form-grid">
-            <label class="field-label">Nokta kodu</label>
-            <input id="bhCode" class="input" readonly />
+
+          <form
+            id="boreholeForm"
+            class="form-grid"
+          >
+
+            <label class="field-label">
+              Nokta kodu
+            </label>
+
+            <input
+              id="bhCode"
+              class="input"
+              readonly
+            />
+
 
             <div class="two-col">
+
               <div>
-                <label class="field-label">Nokta türü</label>
-                <input id="bhPointType" class="input" readonly />
+
+                <label class="field-label">
+                  Nokta türü
+                </label>
+
+                <input
+                  id="bhPointType"
+                  class="input"
+                  readonly
+                />
+
               </div>
+
+
               <div>
-                <label class="field-label">Yöntem</label>
-                <input id="bhMethod" class="input" readonly />
+
+                <label class="field-label">
+                  Yöntem
+                </label>
+
+                <input
+                  id="bhMethod"
+                  class="input"
+                  readonly
+                />
+
               </div>
+
             </div>
+
 
             <div class="two-col">
+
               <div>
-                <label class="field-label">Enlem</label>
-                <input id="bhLat" class="input" readonly />
+
+                <label class="field-label">
+                  Enlem
+                </label>
+
+                <input
+                  id="bhLat"
+                  class="input"
+                  readonly
+                />
+
               </div>
+
+
               <div>
-                <label class="field-label">Boylam</label>
-                <input id="bhLng" class="input" readonly />
+
+                <label class="field-label">
+                  Boylam
+                </label>
+
+                <input
+                  id="bhLng"
+                  class="input"
+                  readonly
+                />
+
               </div>
+
             </div>
+
 
             <div class="two-col">
+
               <div>
-                <label class="field-label">Planlanan derinlik (m)</label>
-                <input id="bhPlannedDepth" class="input" type="number" min="0" step="0.01" />
+
+                <label class="field-label">
+                  Planlanan derinlik (m)
+                </label>
+
+                <input
+                  id="bhPlannedDepth"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+
               </div>
+
+
               <div>
-                <label class="field-label">Gerçekleşen derinlik (m)</label>
-                <input id="bhActualDepth" class="input" type="number" min="0" step="0.01" />
+
+                <label class="field-label">
+                  Gerçekleşen derinlik (m)
+                </label>
+
+                <input
+                  id="bhActualDepth"
+                  class="input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+
               </div>
+
             </div>
 
-            <label class="field-label">Durum</label>
-            <select id="bhStatus" class="input">
-              <option>Planlandı</option>
-              <option>Sahada</option>
-              <option>Kontrol Bekliyor</option>
-              <option>Tamamlandı</option>
+
+            <label class="field-label">
+              Durum
+            </label>
+
+            <select
+              id="bhStatus"
+              class="input"
+            >
+
+              <option>
+                Planlandı
+              </option>
+
+              <option>
+                Sahada
+              </option>
+
+              <option>
+                Kontrol Bekliyor
+              </option>
+
+              <option>
+                Tamamlandı
+              </option>
+
             </select>
 
-            <label class="field-label">Genel not</label>
-            <textarea id="bhNotes" class="input textarea" rows="4" placeholder="Saha ile ilgili genel not..."></textarea>
+
+            <label class="field-label">
+              Genel not
+            </label>
+
+            <textarea
+              id="bhNotes"
+              class="input textarea"
+              rows="4"
+              placeholder="Saha ile ilgili genel not..."
+            ></textarea>
+
 
             <div class="modal-actions">
-              <button type="button" id="cancelBoreholeModalBtn" class="btn ghost">Kapat</button>
-              <button type="submit" class="btn primary">Sondajı Kaydet</button>
+
+              <button
+                type="button"
+                id="cancelBoreholeModalBtn"
+                class="btn ghost"
+              >
+                Kapat
+              </button>
+
+              <button
+                type="submit"
+                class="btn primary"
+              >
+                Noktayı Kaydet
+              </button>
+
             </div>
+
           </form>
+
         </section>
+
+
+        <!-- SAĞ TARAF -->
 
         <section class="borehole-right">
+
+
+          <!-- SAHA KAYITLARI -->
+
           <div class="subpanel">
+
             <div class="subpanel-head">
+
               <div>
-                <h3>Saha Kayıtları</h3>
-                <p>SPT, numune, litoloji, YASS, karot veya saha notu ekleyin.</p>
+
+                <h3>
+                  Saha Kayıtları
+                </h3>
+
+                <p>
+                  SPT, numune, litoloji,
+                  YASS, karot veya saha notu ekleyin.
+                </p>
+
               </div>
+
             </div>
 
-            <form id="fieldEntryForm" class="field-entry-form">
-              <select id="entryType" class="input">
+
+            <form
+              id="fieldEntryForm"
+              class="field-entry-form"
+            >
+
+              <select
+                id="entryType"
+                class="input"
+              >
+
                 <option>SPT</option>
+
                 <option>Numune</option>
+
                 <option>Litoloji</option>
+
                 <option>YASS</option>
+
                 <option>Karot</option>
+
                 <option>Saha Notu</option>
+
               </select>
-              <input id="entryDepthFrom" class="input" type="number" step="0.01" placeholder="Başlangıç m" />
-              <input id="entryDepthTo" class="input" type="number" step="0.01" placeholder="Bitiş m" />
-              <input id="entryValue" class="input" placeholder="Değer / açıklama" />
-              <textarea id="entryNotes" class="input textarea" rows="2" placeholder="Not"></textarea>
-              <button class="btn secondary" type="submit">+ Kayıt Ekle</button>
+
+
+              <input
+                id="entryDepthFrom"
+                class="input"
+                type="number"
+                step="0.01"
+                placeholder="Başlangıç m"
+              />
+
+
+              <input
+                id="entryDepthTo"
+                class="input"
+                type="number"
+                step="0.01"
+                placeholder="Bitiş m"
+              />
+
+
+              <input
+                id="entryValue"
+                class="input"
+                placeholder="Değer / açıklama"
+              />
+
+
+              <textarea
+                id="entryNotes"
+                class="input textarea"
+                rows="2"
+                placeholder="Not"
+              ></textarea>
+
+
+              <button
+                class="btn secondary"
+                type="submit"
+              >
+                + Kayıt Ekle
+              </button>
+
             </form>
 
-            <div id="fieldEntriesList" class="entry-list empty-state">Henüz saha kaydı yok.</div>
+
+            <div
+              id="fieldEntriesList"
+              class="entry-list empty-state"
+            >
+              Henüz saha kaydı yok.
+            </div>
+
           </div>
+
+
+          <!-- FOTOĞRAF / PDF -->
 
           <div class="subpanel">
+
             <div class="subpanel-head">
+
               <div>
-                <h3>Fotoğraf ve Belgeler</h3>
-                <p>Fotoğraf veya PDF yükleyin.</p>
+
+                <h3>
+                  Fotoğraf ve Belgeler
+                </h3>
+
+                <p>
+                  Fotoğraf veya PDF yükleyin.
+                </p>
+
               </div>
+
             </div>
-            <input id="boreholeFiles" type="file" class="file-input" accept="image/*,.pdf" multiple />
-            <button id="uploadBoreholeFilesBtn" class="btn secondary full" type="button">Dosyaları Yükle</button>
-            <div id="boreholeFilesList" class="attachment-list empty-state">Henüz dosya yok.</div>
+
+
+            <input
+              id="boreholeFiles"
+              type="file"
+              class="file-input"
+              accept="image/*,.pdf"
+              multiple
+            />
+
+
+            <button
+              id="uploadBoreholeFilesBtn"
+              class="btn secondary full"
+              type="button"
+            >
+              Dosyaları Yükle
+            </button>
+
+
+            <div
+              id="boreholeFilesList"
+              class="attachment-list empty-state"
+            >
+              Henüz dosya yok.
+            </div>
+
           </div>
+
         </section>
+
       </div>
+
     </div>
+
   </div>
 
-  <div id="toast" class="toast hidden"></div>
+
+  <!-- BİLDİRİM -->
+
+  <div
+    id="toast"
+    class="toast hidden"
+  ></div>
+
+
+  <!-- =========================================================
+       KÜTÜPHANELER
+       ========================================================= -->
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+
   <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script src="config.js"></script>
+
   <script src="app.js"></script>
+
+
+  <!-- =========================================================
+       DASHBOARD BUTONLARI
+       Bu kod index içinde olduğu için ayrıca app.js değiştirmeden
+       Veriler / Noktalar / İş Takibi çalışır.
+       ========================================================= -->
+
+  <script>
+
+    function jeStatusKey(status = "") {
+
+      const s = String(status)
+        .toLocaleLowerCase("tr-TR");
+
+
+      if (s.includes("tamam")) {
+        return "done";
+      }
+
+
+      if (s.includes("saha")) {
+        return "active";
+      }
+
+
+      if (s.includes("kontrol")) {
+        return "review";
+      }
+
+
+      return "planned";
+
+    }
+
+
+    function renderDashboardPointSummaryLocal() {
+
+      if (typeof boreholeRecords === "undefined") {
+        return;
+      }
+
+
+      const planned =
+        boreholeRecords.filter(
+          x => jeStatusKey(x.status) === "planned"
+        ).length;
+
+
+      const active =
+        boreholeRecords.filter(
+          x => jeStatusKey(x.status) === "active"
+        ).length;
+
+
+      const review =
+        boreholeRecords.filter(
+          x => jeStatusKey(x.status) === "review"
+        ).length;
+
+
+      const done =
+        boreholeRecords.filter(
+          x => jeStatusKey(x.status) === "done"
+        ).length;
+
+
+      const elPlanned =
+        document.getElementById("dashPointPlanned");
+
+      const elActive =
+        document.getElementById("dashPointActive");
+
+      const elReview =
+        document.getElementById("dashPointReview");
+
+      const elDone =
+        document.getElementById("dashPointDone");
+
+
+      if (elPlanned) {
+        elPlanned.textContent = planned;
+      }
+
+
+      if (elActive) {
+        elActive.textContent = active;
+      }
+
+
+      if (elReview) {
+        elReview.textContent = review;
+      }
+
+
+      if (elDone) {
+        elDone.textContent = done;
+      }
+
+    }
+
+
+    function renderTrackingChartLocal() {
+
+      const el =
+        document.getElementById("trackingChart");
+
+
+      if (!el) {
+        return;
+      }
+
+
+      if (
+        typeof projects === "undefined" ||
+        !projects.length
+      ) {
+
+        el.innerHTML =
+          '<div class="empty-state">Henüz iş bulunmuyor.</div>';
+
+        return;
+
+      }
+
+
+      el.innerHTML =
+        projects.map(project => {
+
+          let progress = 0;
+
+
+          if (
+            typeof getProjectProgress === "function"
+          ) {
+
+            progress =
+              getProjectProgress(project.id).percent;
+
+          } else {
+
+            progress =
+              Number(project.progress || 0);
+
+          }
+
+
+          const safeName =
+            typeof escapeHtml === "function"
+              ? escapeHtml(project.name)
+              : project.name;
+
+
+          const safeCompany =
+            typeof escapeHtml === "function"
+              ? escapeHtml(project.company || "")
+              : project.company || "";
+
+
+          return `
+
+            <div
+              class="track-row"
+              data-project-id="${project.id}"
+            >
+
+              <div class="track-row-top">
+
+                <strong>
+                  ${safeName}
+                </strong>
+
+                <span>
+                  %${progress}
+                </span>
+
+              </div>
+
+
+              <div class="progress">
+
+                <span
+                  style="width:${progress}%"
+                ></span>
+
+              </div>
+
+
+              <div class="track-meta">
+
+                ${safeCompany}
+                ·
+                ${Number(project.area || 0).toLocaleString("tr-TR")} ha
+
+              </div>
+
+            </div>
+
+          `;
+
+        }).join("");
+
+
+      document
+        .querySelectorAll(".track-row")
+        .forEach(row => {
+
+          row.addEventListener(
+            "click",
+            () => {
+
+              if (
+                typeof openProjectDetail === "function"
+              ) {
+
+                openProjectDetail(
+                  row.dataset.projectId
+                );
+
+              }
+
+            }
+          );
+
+        });
+
+    }
+
+
+    function switchDashboardPanelLocal(panel) {
+
+      const panels = {
+
+        overview:
+          document.getElementById(
+            "dashboardOverviewPanel"
+          ),
+
+        points:
+          document.getElementById(
+            "dashboardPointsPanel"
+          ),
+
+        tracking:
+          document.getElementById(
+            "dashboardTrackingPanel"
+          )
+
+      };
+
+
+      Object
+        .values(panels)
+        .forEach(el => {
+
+          if (el) {
+            el.classList.add("hidden");
+          }
+
+        });
+
+
+      if (panels[panel]) {
+
+        panels[panel]
+          .classList
+          .remove("hidden");
+
+      }
+
+
+      document
+        .querySelectorAll(
+          ".dashboard-switch-btn"
+        )
+        .forEach(btn => {
+
+          btn.classList.toggle(
+
+            "active",
+
+            btn.dataset.dashboardPanel === panel
+
+          );
+
+        });
+
+
+      if (panel === "points") {
+
+        renderDashboardPointSummaryLocal();
+
+
+        setTimeout(
+          () => {
+
+            if (
+              typeof dashboardMap !== "undefined" &&
+              dashboardMap
+            ) {
+
+              dashboardMap.invalidateSize();
+
+            }
+
+          },
+          120
+        );
+
+      }
+
+
+      if (panel === "tracking") {
+
+        renderTrackingChartLocal();
+
+      }
+
+    }
+
+
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => {
+
+        document
+          .querySelectorAll(
+            ".dashboard-switch-btn"
+          )
+          .forEach(btn => {
+
+            btn.addEventListener(
+              "click",
+              () => {
+
+                switchDashboardPanelLocal(
+                  btn.dataset.dashboardPanel
+                );
+
+              }
+            );
+
+          });
+
+      }
+    );
+
+  </script>
+
 </body>
 </html>
