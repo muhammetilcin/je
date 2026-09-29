@@ -1723,6 +1723,8 @@ function switchDashboardPanel(panel) {
       $("dailyReportDate").value = localDateInputValue(new Date());
     }
 
+    loadDailyReportArchive();
+
   }
 }
 
@@ -7057,6 +7059,99 @@ async function generateDailyReport() {
 }
 
 
+async function saveDailyReport() {
+  const reportText = $("dailyReportText")?.value?.trim() || "";
+  const reportDate = $("dailyReportDate")?.value || localDateInputValue(new Date());
+  const projectId = $("dailyReportProjectSelect")?.value || null;
+
+  if (!reportText) return toast("Önce raporu oluşturun.");
+
+  try {
+    const { error } = await sb
+      .from("daily_reports")
+      .insert({
+        report_date: reportDate,
+        project_id: projectId,
+        report_text: reportText,
+        created_by: currentUser.id
+      });
+
+    if (error) throw error;
+
+    toast("Gün sonu bilgi notu arşive kaydedildi.");
+    await loadDailyReportArchive();
+
+  } catch (err) {
+    console.error(err);
+    toast(
+      err.message ||
+      "Rapor kaydedilemedi. Supabase günlük rapor SQL güncellemesini kontrol edin.",
+      6000
+    );
+  }
+}
+
+
+async function loadDailyReportArchive() {
+  const list = $("dailyReportArchiveList");
+  if (!list || !currentUser) return;
+
+  try {
+    const { data, error } = await sb
+      .from("daily_reports")
+      .select("id,report_date,project_id,report_text,created_at")
+      .order("report_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) throw error;
+
+    if (!data?.length) {
+      list.innerHTML = '<div class="empty-state">Henüz kaydedilmiş gün sonu raporu yok.</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(report => {
+      const project = projects.find(p => p.id === report.project_id);
+      const label = project?.name || "Tüm İşler";
+      const preview = String(report.report_text || "").replace(/\s+/g, " ").slice(0, 120);
+
+      return `
+        <article class="managed-user-card daily-report-archive-item" data-id="${report.id}">
+          <div>
+            <strong>${new Date(`${report.report_date}T12:00:00`).toLocaleDateString("tr-TR")} · ${escapeHtml(label)}</strong>
+            <small>${escapeHtml(preview)}${preview.length >= 120 ? "…" : ""}</small>
+          </div>
+          <button
+            class="btn ghost mini open-daily-report-btn"
+            type="button"
+            data-id="${report.id}"
+          >
+            Aç
+          </button>
+        </article>
+      `;
+    }).join("");
+
+    document.querySelectorAll(".open-daily-report-btn").forEach(btn => {
+      btn.onclick = () => {
+        const report = data.find(x => x.id === btn.dataset.id);
+        if (!report) return;
+
+        $("dailyReportDate").value = report.report_date;
+        $("dailyReportProjectSelect").value = report.project_id || "";
+        $("dailyReportText").value = report.report_text || "";
+      };
+    });
+
+  } catch (err) {
+    console.error(err);
+    list.innerHTML =
+      '<div class="empty-state">Rapor arşivi yüklenemedi. Supabase günlük rapor SQL güncellemesini çalıştırın.</div>';
+  }
+}
+
+
 async function copyDailyReport() {
   const textValue = $("dailyReportText")?.value || "";
   if (!textValue.trim()) return toast("Önce raporu oluşturun.");
@@ -7267,6 +7362,10 @@ function wireEvents() {
 
   if ($("generateDailyReportBtn")) {
     $("generateDailyReportBtn").onclick = generateDailyReport;
+  }
+
+  if ($("saveDailyReportBtn")) {
+    $("saveDailyReportBtn").onclick = saveDailyReport;
   }
 
   if ($("copyDailyReportBtn")) {
