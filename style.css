@@ -167,6 +167,7 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
   .nav{width:100%;flex-direction:row;justify-content:space-around}
   .nav-item{padding:9px 12px}
   .main{padding:16px 14px 90px}
+  .workspace-tabs{margin-bottom:14px}
   .topbar{align-items:flex-start}.topbar h1{font-size:23px}
   .topbar-actions{flex-direction:column;align-items:flex-end}
   .stats-grid{grid-template-columns:1fr 1fr}
@@ -346,3 +347,16 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 }
 .point-type-badge.geotech{background:#eef0fb;color:#4b4f88}
 .point-type-badge.borehole{background:#eaf5f1;color:#1f6f5f}
+
+
+.workspace-tabs{
+  display:flex;gap:8px;align-items:center;margin:-6px 0 18px;padding:6px;
+  border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:var(--shadow);
+  overflow-x:auto
+}
+.workspace-tab{
+  border:0;background:transparent;color:var(--muted);padding:10px 14px;border-radius:10px;
+  font-weight:800;white-space:nowrap
+}
+.workspace-tab:hover{background:#f3f7f6;color:var(--text)}
+.workspace-tab.active{background:var(--accent-2);color:var(--accent)}
