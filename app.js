@@ -9,6 +9,11 @@ let currentRole = null;
 let projects = [];
 let boreholeRecords = [];
 let boreholeFilter = "all";
+let fieldPointSchemaAvailable = true;
+let currentLocation = null;
+let locationMarker = null;
+let locationAccuracyCircle = null;
+let pickingPointFromMap = false;
 let activeProjectId = null;
 let activeBoreholeId = null;
 let editingProjectId = null;
@@ -87,6 +92,15 @@ function initMaps() {
     attribution: '&copy; OpenStreetMap katkıcıları',
     maxZoom: 20
   }).addTo(dashboardMap);
+
+  boreholeMap.on("click", e => {
+    if (!pickingPointFromMap || $("pointModal").classList.contains("hidden")) return;
+    $("pointLat").value = e.latlng.lat.toFixed(7);
+    $("pointLng").value = e.latlng.lng.toFixed(7);
+    $("pointLocationAccuracy").textContent = "Konum: haritadan seçildi";
+    pickingPointFromMap = false;
+    toast("Nokta konumu haritadan seçildi.");
+  });
 }
 
 function applyRole() {
@@ -109,7 +123,7 @@ function switchView(view) {
     dashboard: ["Kontrol Paneli", "Tüm işleri, saha durumunu ve ilerlemeyi tek ekrandan izleyin."],
     projects: ["İşler", "Mikrobölgeleme ve jeolojik-jeoteknik işleri yönetin."],
     map: ["Harita", "Çalışma alanlarını ve sondaj/ölçüm noktalarını yönetin."],
-    boreholes: ["Sondajlar", "Sondaj noktalarının saha kayıtlarını, derinliklerini ve dosyalarını yönetin."],
+    boreholes: ["Saha Noktaları", "Sondaj ve jeoteknik noktalarını konum, saha kaydı ve dosyalarıyla yönetin."],
     users: ["Kullanıcılar", "Yönetici ve firma yetkilerini yönetin."]
   };
   $("pageTitle").textContent = titles[view]?.[0] || "";
@@ -220,13 +234,31 @@ async function loadAppData() {
 
   let boreholeRows = [];
   if (projectIds.length) {
-    const { data, error } = await sb
+    let result = await sb
       .from("borehole_records")
-      .select("id,project_id,borehole_code,longitude,latitude,planned_depth_m,actual_depth_m,status,notes,started_at,completed_at,created_at")
+      .select("id,project_id,borehole_code,longitude,latitude,planned_depth_m,actual_depth_m,status,notes,started_at,completed_at,created_at,point_type,method,location_accuracy_m,location_captured_at")
       .in("project_id", projectIds)
       .order("borehole_code", { ascending: true });
-    if (error) throw error;
-    boreholeRows = data || [];
+
+    if (result.error) {
+      fieldPointSchemaAvailable = false;
+      result = await sb
+        .from("borehole_records")
+        .select("id,project_id,borehole_code,longitude,latitude,planned_depth_m,actual_depth_m,status,notes,started_at,completed_at,created_at")
+        .in("project_id", projectIds)
+        .order("borehole_code", { ascending: true });
+    } else {
+      fieldPointSchemaAvailable = true;
+    }
+
+    if (result.error) throw result.error;
+    boreholeRows = (result.data || []).map(row => ({
+      ...row,
+      point_type: row.point_type || "Sondaj",
+      method: row.method || null,
+      location_accuracy_m: row.location_accuracy_m ?? null,
+      location_captured_at: row.location_captured_at || null
+    }));
   }
   boreholeRecords = boreholeRows;
 
@@ -267,7 +299,7 @@ function renderAll() {
 }
 
 function getProjectProgress(projectId) {
-  const rows = boreholeRecords.filter(b => b.project_id === projectId);
+  const rows = boreholeRecords.filter(b => b.project_id === projectId && (b.point_type || "Sondaj") === "Sondaj");
   if (!rows.length) {
     const p = projects.find(x => x.id === projectId);
     return { total: 0, done: 0, percent: Number(p?.progress || 0) };
@@ -283,13 +315,14 @@ function getProjectProgress(projectId) {
 async function syncProjectProgress(projectId) {
   const { data, error } = await sb
     .from("borehole_records")
-    .select("status")
+    .select("status,point_type")
     .eq("project_id", projectId);
 
   if (error) throw error;
 
-  const total = data?.length || 0;
-  const done = (data || []).filter(x => x.status === "Tamamlandı").length;
+  const sondajRows = (data || []).filter(x => (x.point_type || "Sondaj") === "Sondaj");
+  const total = sondajRows.length;
+  const done = sondajRows.filter(x => x.status === "Tamamlandı").length;
   const percent = total ? Math.round((done / total) * 100) : 0;
 
   const { error: updateError } = await sb
@@ -303,7 +336,7 @@ async function syncProjectProgress(projectId) {
 
 function renderStats() {
   $("statProjects").textContent = projects.length;
-  $("statBoreholes").textContent = projects.reduce((n,p) => n + (p.boreholes?.features?.length || 0), 0);
+  $("statBoreholes").textContent = boreholeRecords.filter(b => (b.point_type || "Sondaj") === "Sondaj").length;
   $("statArea").textContent = projects.reduce((n,p) => n + Number(p.area || 0), 0).toLocaleString("tr-TR") + " ha";
   $("statPending").textContent = projects.filter(p => p.status === "Ofis Kontrolünde").length;
 }
@@ -326,7 +359,7 @@ function renderProjects() {
   `).join("");
 
   $("projectsTableBody").innerHTML = projects.map(p => {
-    const count = p.boreholes?.features?.length || 0;
+    const count = boreholeRecords.filter(b => b.project_id === p.id && (b.point_type || "Sondaj") === "Sondaj").length;
     const progressInfo = getProjectProgress(p.id);
     const progress = progressInfo.percent;
     return `
@@ -452,6 +485,134 @@ function renderMapProject() {
 }
 
 
+function nextPointCode(type) {
+  const prefix = type === "Jeoteknik" ? "JT-" : "SK-";
+  const nums = boreholeRecords
+    .filter(b => b.project_id === activeProjectId && (b.point_type || "Sondaj") === type)
+    .map(b => {
+      const m = String(b.borehole_code || "").match(/(\d+)$/);
+      return m ? Number(m[1]) : 0;
+    });
+  return prefix + String((Math.max(0, ...nums) + 1)).padStart(2, "0");
+}
+
+function openPointModal(type) {
+  if (!activeProjectId) return toast("Önce bir iş seçin.");
+  if (!fieldPointSchemaAvailable) {
+    return toast("Yeni saha noktası için Supabase saha noktaları SQL güncellemesini önce çalıştırın.", 6000);
+  }
+
+  $("pointForm").reset();
+  $("pointType").value = type;
+  $("pointCode").value = nextPointCode(type);
+  $("pointModalTitle").textContent = type === "Jeoteknik" ? "Yeni Jeoteknik Nokta" : "Yeni Sondaj Noktası";
+  $("pointMethodGroup").classList.toggle("hidden", type !== "Jeoteknik");
+  $("pointLocationAccuracy").textContent = "Konum doğruluğu: —";
+  $("pointModal").classList.remove("hidden");
+  pickingPointFromMap = false;
+  $("pointCode").focus();
+}
+
+function closePointModal() {
+  $("pointModal").classList.add("hidden");
+  $("pointForm").reset();
+  pickingPointFromMap = false;
+}
+
+function getDeviceLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Bu cihaz konum bilgisini desteklemiyor."));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        capturedAt: new Date(pos.timestamp || Date.now()).toISOString()
+      }),
+      err => reject(new Error(
+        err.code === 1 ? "Konum izni verilmedi." :
+        err.code === 2 ? "Konum belirlenemedi." :
+        "Konum alınırken zaman aşımı oluştu."
+      )),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+    );
+  });
+}
+
+function showLocationOnMap(location) {
+  if (!boreholeMap || !location) return;
+  if (locationMarker) boreholeMap.removeLayer(locationMarker);
+  if (locationAccuracyCircle) boreholeMap.removeLayer(locationAccuracyCircle);
+
+  locationMarker = L.circleMarker([location.latitude, location.longitude], {
+    radius: 9, weight: 3, fillOpacity: .9
+  }).addTo(boreholeMap).bindTooltip("Konumum", { permanent: true, direction: "top" });
+
+  if (Number.isFinite(Number(location.accuracy))) {
+    locationAccuracyCircle = L.circle([location.latitude, location.longitude], {
+      radius: Number(location.accuracy), weight: 1, fillOpacity: .05
+    }).addTo(boreholeMap);
+  }
+
+  boreholeMap.setView([location.latitude, location.longitude], Math.max(boreholeMap.getZoom(), 17));
+}
+
+async function locateMe(fillPointForm=false) {
+  try {
+    $("currentLocationInfo").textContent = "Konum alınıyor...";
+    const loc = await getDeviceLocation();
+    currentLocation = loc;
+    const accuracyText = Number.isFinite(Number(loc.accuracy)) ? ` ±${Math.round(loc.accuracy)} m` : "";
+    $("currentLocationInfo").textContent = `${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)}${accuracyText}`;
+    showLocationOnMap(loc);
+
+    if (fillPointForm) {
+      $("pointLat").value = loc.latitude.toFixed(7);
+      $("pointLng").value = loc.longitude.toFixed(7);
+      $("pointLocationAccuracy").textContent = `Konum doğruluğu: ${Math.round(loc.accuracy || 0)} m`;
+    }
+  } catch (err) {
+    $("currentLocationInfo").textContent = "Konum alınamadı";
+    toast(err.message || "Konum alınamadı.", 5000);
+  }
+}
+
+async function saveNewPoint(event) {
+  event.preventDefault();
+  if (!activeProjectId) return;
+  if (!fieldPointSchemaAvailable) return toast("Supabase saha noktaları SQL güncellemesi gerekli.", 5000);
+
+  const type = $("pointType").value || "Sondaj";
+  const payload = {
+    project_id: activeProjectId,
+    borehole_code: $("pointCode").value.trim(),
+    point_type: type,
+    method: type === "Jeoteknik" ? ($("pointMethod").value || null) : null,
+    latitude: Number($("pointLat").value),
+    longitude: Number($("pointLng").value),
+    status: "Planlandı",
+    notes: $("pointNotes").value.trim() || null,
+    location_accuracy_m: currentLocation &&
+      Math.abs(currentLocation.latitude - Number($("pointLat").value)) < 0.000001 &&
+      Math.abs(currentLocation.longitude - Number($("pointLng").value)) < 0.000001
+        ? currentLocation.accuracy : null,
+    location_captured_at: currentLocation ? currentLocation.capturedAt : null,
+    created_by: currentUser.id
+  };
+
+  try {
+    const { error } = await sb.from("borehole_records").insert(payload);
+    if (error) throw error;
+    if (type === "Sondaj") await syncProjectProgress(activeProjectId);
+    closePointModal();
+    await loadAppData();
+    toast(type === "Jeoteknik" ? "Jeoteknik nokta eklendi." : "Sondaj noktası eklendi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Saha noktası eklenemedi.", 5000);
+  }
+}
+
 function renderBoreholeMap() {
   if (!mapsInitialized || !boreholeMap) return;
 
@@ -487,7 +648,10 @@ function renderBoreholeMap() {
         fillOpacity: .92
       });
 
-      marker.bindTooltip(escapeHtml(b.borehole_code), {
+      const mapLabel = (b.point_type || "Sondaj") === "Jeoteknik" && b.method
+        ? `${b.borehole_code} · ${b.method}`
+        : b.borehole_code;
+      marker.bindTooltip(escapeHtml(mapLabel), {
         permanent: true,
         direction: "right",
         offset: [8, 0],
@@ -795,13 +959,15 @@ function renderBoreholes() {
   const planned = allRows.filter(b => (b.status || "Planlandı") === "Planlandı").length;
   const active = allRows.filter(b => b.status === "Sahada").length;
   const done = allRows.filter(b => b.status === "Tamamlandı").length;
-  const progress = allRows.length ? Math.round((done / allRows.length) * 100) : 0;
+  const sondajRows = allRows.filter(b => (b.point_type || "Sondaj") === "Sondaj");
+  const doneSondaj = sondajRows.filter(b => b.status === "Tamamlandı").length;
+  const progress = sondajRows.length ? Math.round((doneSondaj / sondajRows.length) * 100) : 0;
 
   $("bhStatTotal").textContent = allRows.length;
   $("bhStatPlanned").textContent = planned;
   $("bhStatActive").textContent = active;
   $("bhStatDone").textContent = done;
-  $("bhProgressText").textContent = `${done} / ${allRows.length} tamamlandı · %${progress}`;
+  $("bhProgressText").textContent = `${doneSondaj} / ${sondajRows.length} sondaj tamamlandı · %${progress}`;
   $("bhProgressBar").style.width = `${progress}%`;
 
   document.querySelectorAll(".borehole-stat-card").forEach(card => {
@@ -813,12 +979,12 @@ function renderBoreholes() {
     : allRows.filter(b => (b.status || "Planlandı") === boreholeFilter);
 
   if (!allRows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Bu iş için sondaj noktası bulunmuyor. Harita bölümünden KML/KMZ ile sondaj noktalarını içe aktarın.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">Bu iş için saha noktası bulunmuyor. KML/KMZ içe aktarabilir veya sahadan yeni nokta ekleyebilirsiniz.</td></tr>';
     return;
   }
 
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(boreholeFilter)} durumunda sondaj bulunmuyor.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-state">${escapeHtml(boreholeFilter)} durumunda saha noktası bulunmuyor.</td></tr>`;
     return;
   }
 
@@ -828,6 +994,7 @@ function renderBoreholes() {
     return `
       <tr>
         <td><strong>${escapeHtml(b.borehole_code)}</strong></td>
+        <td><span class="point-type-badge ${(b.point_type || "Sondaj") === "Jeoteknik" ? "geotech" : "borehole"}">${escapeHtml(b.point_type || "Sondaj")}${b.method ? " · " + escapeHtml(b.method) : ""}</span></td>
         <td><small>${lat}, ${lng}</small></td>
         <td>${b.planned_depth_m ?? "—"} m</td>
         <td>${b.actual_depth_m ?? "—"} m</td>
@@ -852,6 +1019,8 @@ async function openBoreholeModal(id) {
   $("boreholeModalTitle").textContent = b.borehole_code;
   $("boreholeModalSubtitle").textContent = p?.name || "Sondaj";
   $("bhCode").value = b.borehole_code || "";
+  $("bhPointType").value = b.point_type || "Sondaj";
+  $("bhMethod").value = b.method || "—";
   $("bhLat").value = b.latitude ?? "";
   $("bhLng").value = b.longitude ?? "";
   $("bhPlannedDepth").value = b.planned_depth_m ?? "";
@@ -1494,6 +1663,21 @@ function wireEvents() {
   $("uploadBoreholeFilesBtn").onclick = uploadBoreholeFiles;
   $("toggleMapSidebarBtn").onclick = toggleMapSidebar;
   $("toggleAppSidebarBtn").onclick = toggleAppSidebar;
+
+  $("locateMeBtn").onclick = () => locateMe(false);
+  $("addBoreholePointBtn").onclick = () => openPointModal("Sondaj");
+  $("addGeotechnicalPointBtn").onclick = () => openPointModal("Jeoteknik");
+  $("closePointModalBtn").onclick = closePointModal;
+  $("cancelPointModalBtn").onclick = closePointModal;
+  $("pointModal").addEventListener("click", e => {
+    if (e.target.id === "pointModal") closePointModal();
+  });
+  $("useCurrentLocationBtn").onclick = () => locateMe(true);
+  $("pickPointFromMapBtn").onclick = () => {
+    pickingPointFromMap = true;
+    toast("Haritada noktanın yerini tıklayın.");
+  };
+  $("pointForm").addEventListener("submit", saveNewPoint);
   $("deleteBoundaryLayerBtn").onclick = () => deleteProjectLayer("boundary");
   $("deleteBoreholeLayerBtn").onclick = () => deleteProjectLayer("boreholes");
 
