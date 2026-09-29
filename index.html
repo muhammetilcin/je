@@ -43,6 +43,7 @@
         <button class="nav-item active" data-view="dashboard">◫ <span>Kontrol Paneli</span></button>
         <button class="nav-item" data-view="projects">▣ <span>İşler</span></button>
         <button class="nav-item" data-view="map">⌖ <span>Harita</span></button>
+        <button class="nav-item" data-view="boreholes">● <span>Sondajlar</span></button>
         <button class="nav-item admin-only" data-view="users">👥 <span>Kullanıcılar</span></button>
       </nav>
 
@@ -148,6 +149,44 @@
         </div>
       </section>
 
+      <section id="boreholesView" class="view">
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Sondaj Noktaları</h2>
+              <p>Sondajların saha durumunu, derinliklerini, kayıtlarını ve dosyalarını yönetin.</p>
+            </div>
+            <div class="borehole-project-picker">
+              <label class="field-label">İş</label>
+              <select id="boreholeProjectSelect" class="input"></select>
+            </div>
+          </div>
+
+          <div class="borehole-stats">
+            <div><span>Toplam</span><strong id="bhStatTotal">0</strong></div>
+            <div><span>Planlandı</span><strong id="bhStatPlanned">0</strong></div>
+            <div><span>Sahada</span><strong id="bhStatActive">0</strong></div>
+            <div><span>Tamamlandı</span><strong id="bhStatDone">0</strong></div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sondaj</th>
+                  <th>Koordinat</th>
+                  <th>Planlanan</th>
+                  <th>Gerçekleşen</th>
+                  <th>Durum</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="boreholesTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
       <section id="usersView" class="view">
         <section class="panel">
           <div class="panel-head">
@@ -187,6 +226,106 @@
           <button id="projectSaveBtn" type="submit" class="btn primary">İşi Kaydet</button>
         </div>
       </form>
+    </div>
+  </div>
+
+  <div id="boreholeModal" class="modal-backdrop hidden">
+    <div class="modal modal-large">
+      <div class="modal-head">
+        <div>
+          <h2 id="boreholeModalTitle">Sondaj</h2>
+          <p id="boreholeModalSubtitle">Saha kayıtları</p>
+        </div>
+        <button id="closeBoreholeModalBtn" class="icon-btn">×</button>
+      </div>
+
+      <div class="borehole-modal-grid">
+        <section>
+          <form id="boreholeForm" class="form-grid">
+            <label class="field-label">Sondaj kodu</label>
+            <input id="bhCode" class="input" readonly />
+
+            <div class="two-col">
+              <div>
+                <label class="field-label">Enlem</label>
+                <input id="bhLat" class="input" readonly />
+              </div>
+              <div>
+                <label class="field-label">Boylam</label>
+                <input id="bhLng" class="input" readonly />
+              </div>
+            </div>
+
+            <div class="two-col">
+              <div>
+                <label class="field-label">Planlanan derinlik (m)</label>
+                <input id="bhPlannedDepth" class="input" type="number" min="0" step="0.01" />
+              </div>
+              <div>
+                <label class="field-label">Gerçekleşen derinlik (m)</label>
+                <input id="bhActualDepth" class="input" type="number" min="0" step="0.01" />
+              </div>
+            </div>
+
+            <label class="field-label">Durum</label>
+            <select id="bhStatus" class="input">
+              <option>Planlandı</option>
+              <option>Sahada</option>
+              <option>Kontrol Bekliyor</option>
+              <option>Tamamlandı</option>
+            </select>
+
+            <label class="field-label">Genel not</label>
+            <textarea id="bhNotes" class="input textarea" rows="4" placeholder="Saha ile ilgili genel not..."></textarea>
+
+            <div class="modal-actions">
+              <button type="button" id="cancelBoreholeModalBtn" class="btn ghost">Kapat</button>
+              <button type="submit" class="btn primary">Sondajı Kaydet</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="borehole-right">
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <div>
+                <h3>Saha Kayıtları</h3>
+                <p>SPT, numune, litoloji, YASS, karot veya saha notu ekleyin.</p>
+              </div>
+            </div>
+
+            <form id="fieldEntryForm" class="field-entry-form">
+              <select id="entryType" class="input">
+                <option>SPT</option>
+                <option>Numune</option>
+                <option>Litoloji</option>
+                <option>YASS</option>
+                <option>Karot</option>
+                <option>Saha Notu</option>
+              </select>
+              <input id="entryDepthFrom" class="input" type="number" step="0.01" placeholder="Başlangıç m" />
+              <input id="entryDepthTo" class="input" type="number" step="0.01" placeholder="Bitiş m" />
+              <input id="entryValue" class="input" placeholder="Değer / açıklama" />
+              <textarea id="entryNotes" class="input textarea" rows="2" placeholder="Not"></textarea>
+              <button class="btn secondary" type="submit">+ Kayıt Ekle</button>
+            </form>
+
+            <div id="fieldEntriesList" class="entry-list empty-state">Henüz saha kaydı yok.</div>
+          </div>
+
+          <div class="subpanel">
+            <div class="subpanel-head">
+              <div>
+                <h3>Fotoğraf ve Belgeler</h3>
+                <p>Fotoğraf veya PDF yükleyin.</p>
+              </div>
+            </div>
+            <input id="boreholeFiles" type="file" class="file-input" accept="image/*,.pdf" multiple />
+            <button id="uploadBoreholeFilesBtn" class="btn secondary full" type="button">Dosyaları Yükle</button>
+            <div id="boreholeFilesList" class="attachment-list empty-state">Henüz dosya yok.</div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 
