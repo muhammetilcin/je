@@ -230,8 +230,8 @@ async function loadAppData() {
   boreholeRecords = boreholeRows;
 
   projects = (projectRows || []).map(row => {
-    const boundary = layers.filter(l => l.project_id === row.id && l.layer_type === "boundary").at(-1)?.geojson || null;
-    const boreholes = layers.filter(l => l.project_id === row.id && l.layer_type === "boreholes").at(-1)?.geojson || null;
+    const boundaryLayer = layers.filter(l => l.project_id === row.id && l.layer_type === "boundary").at(-1) || null;
+    const boreholesLayer = layers.filter(l => l.project_id === row.id && l.layer_type === "boreholes").at(-1) || null;
     return {
       id: row.id,
       name: row.short_name,
@@ -240,8 +240,12 @@ async function loadAppData() {
       company: companyMap[row.company_id] || "Firma atanmadı",
       status: row.status,
       progress: Number(row.progress || 0),
-      boundary,
-      boreholes
+      boundary: boundaryLayer?.geojson || null,
+      boreholes: boreholesLayer?.geojson || null,
+      boundaryLayerId: boundaryLayer?.id || null,
+      boundaryLayerName: boundaryLayer?.name || "",
+      boreholesLayerId: boreholesLayer?.id || null,
+      boreholesLayerName: boreholesLayer?.name || ""
     };
   });
 
@@ -351,12 +355,25 @@ function renderMapProject() {
     $("mapProjectName").textContent = "İş seçilmedi";
     $("mapProjectMeta").textContent = "—";
     $("mapBoreholeCount").textContent = "0 sondaj";
+    $("boundaryLayerInfo").textContent = "Yüklü çalışma alanı yok";
+    $("boreholeLayerInfo").textContent = "Yüklü sondaj KML/KMZ yok";
+    $("deleteBoundaryLayerBtn").disabled = true;
+    $("deleteBoreholeLayerBtn").disabled = true;
     return;
   }
 
   $("mapProjectName").textContent = p.name;
   $("mapProjectMeta").textContent = `${Number(p.area).toLocaleString("tr-TR")} ha · ${p.company}`;
   $("mapBoreholeCount").textContent = `${p.boreholes?.features?.length || 0} sondaj`;
+
+  $("boundaryLayerInfo").textContent = p.boundaryLayerName
+    ? `Yüklü: ${p.boundaryLayerName}`
+    : "Yüklü çalışma alanı yok";
+  $("boreholeLayerInfo").textContent = p.boreholesLayerName
+    ? `Yüklü: ${p.boreholesLayerName}`
+    : "Yüklü sondaj KML/KMZ yok";
+  $("deleteBoundaryLayerBtn").disabled = !p.boundaryLayerId;
+  $("deleteBoreholeLayerBtn").disabled = !p.boreholesLayerId;
 
   const bounds = [];
 
@@ -493,6 +510,32 @@ async function fileToGeoJSON(file) {
   const geojson = toGeoJSON.kml(xml);
   if (!geojson?.features?.length) throw new Error("Dosyada harita verisi bulunamadı.");
   return geojson;
+}
+
+async function deleteProjectLayer(layerType) {
+  if (currentRole !== "admin") return;
+  const p = projects.find(x => x.id === activeProjectId);
+  if (!p) return toast("Önce bir iş seçin.");
+
+  const layerId = layerType === "boundary" ? p.boundaryLayerId : p.boreholesLayerId;
+  if (!layerId) return toast("Silinecek katman bulunamadı.");
+
+  const label = layerType === "boundary" ? "çalışma alanı KML/KMZ" : "sondaj KML/KMZ";
+  const extra = layerType === "boreholes"
+    ? "\n\nSondaj saha kayıtları ve fotoğraflar korunur; yalnızca haritadaki yüklenmiş KML/KMZ katmanı silinir."
+    : "";
+
+  if (!window.confirm(`${label} silinsin mi?${extra}`)) return;
+
+  try {
+    const { error } = await sb.from("project_layers").delete().eq("id", layerId);
+    if (error) throw error;
+    await loadAppData();
+    toast("Katman silindi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Katman silinemedi.", 5000);
+  }
 }
 
 async function replaceProjectLayer(projectId, layerType, fileName, geojson) {
@@ -906,6 +949,41 @@ async function uploadBoreholeFiles() {
   }
 }
 
+async function renameAttachment(id, currentName) {
+  const next = window.prompt("Dosya adını değiştir:", currentName);
+  if (next === null) return;
+  const clean = next.trim();
+  if (!clean || clean === currentName) return;
+
+  try {
+    const { error } = await sb.from("attachments").update({ file_name: clean }).eq("id", id);
+    if (error) throw error;
+    await loadBoreholeAttachments(activeBoreholeId);
+    toast("Dosya adı güncellendi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Dosya adı değiştirilemedi.", 5000);
+  }
+}
+
+async function deleteAttachment(id, storagePath) {
+  if (!window.confirm("Bu fotoğraf/belge silinsin mi?")) return;
+
+  try {
+    const { error: storageError } = await sb.storage.from("field-files").remove([storagePath]);
+    if (storageError) throw storageError;
+
+    const { error: dbError } = await sb.from("attachments").delete().eq("id", id);
+    if (dbError) throw dbError;
+
+    await loadBoreholeAttachments(activeBoreholeId);
+    toast("Fotoğraf/belge silindi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Dosya silinemedi.", 5000);
+  }
+}
+
 async function loadBoreholeAttachments(boreholeId) {
   const { data, error } = await sb
     .from("attachments")
@@ -930,15 +1008,33 @@ async function loadBoreholeAttachments(boreholeId) {
     const url = signed?.signedUrl || "#";
     const size = file.size_bytes ? (Number(file.size_bytes) / 1024 / 1024).toFixed(2) + " MB" : "";
     rendered.push(`
-      <a class="attachment-card" href="${url}" target="_blank" rel="noopener">
-        <strong>${escapeHtml(file.file_name)}</strong>
-        <span>${escapeHtml(size)}</span>
-      </a>
+      <div class="attachment-card">
+        <a class="attachment-main" href="${url}" target="_blank" rel="noopener">
+          <strong>${escapeHtml(file.file_name)}</strong>
+          <span>${escapeHtml(size)}</span>
+        </a>
+        <div class="attachment-actions">
+          <button class="btn ghost mini rename-attachment-btn"
+            data-id="${file.id}"
+            data-name="${encodeURIComponent(file.file_name)}"
+            type="button">Düzenle</button>
+          <button class="btn danger mini delete-attachment-btn"
+            data-id="${file.id}"
+            data-path="${encodeURIComponent(file.storage_path)}"
+            type="button">Sil</button>
+        </div>
+      </div>
     `);
   }
   $("boreholeFilesList").innerHTML = rendered.join("");
-}
 
+  document.querySelectorAll(".rename-attachment-btn").forEach(btn => {
+    btn.onclick = () => renameAttachment(btn.dataset.id, decodeURIComponent(btn.dataset.name));
+  });
+  document.querySelectorAll(".delete-attachment-btn").forEach(btn => {
+    btn.onclick = () => deleteAttachment(btn.dataset.id, decodeURIComponent(btn.dataset.path));
+  });
+}
 
 function normalizeHeader(value="") {
   return String(value)
@@ -1312,6 +1408,8 @@ function wireEvents() {
   $("fieldEntryForm").addEventListener("submit", addFieldEntry);
   $("uploadBoreholeFilesBtn").onclick = uploadBoreholeFiles;
   $("toggleMapSidebarBtn").onclick = toggleMapSidebar;
+  $("deleteBoundaryLayerBtn").onclick = () => deleteProjectLayer("boundary");
+  $("deleteBoreholeLayerBtn").onclick = () => deleteProjectLayer("boreholes");
 
   $("importBoundaryBtn").onclick = () => importLayer("boundary");
   $("importBoreholesBtn").onclick = () => importLayer("borehole");
