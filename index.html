@@ -31,6 +31,7 @@
 
   <div id="appShell" class="app-hidden">
     <aside class="sidebar">
+      <button id="toggleAppSidebarBtn" class="sidebar-toggle" type="button" title="Menüyü daralt">‹</button>
       <div class="brand">
         <div class="brand-mark">JE</div>
         <div>
@@ -172,10 +173,26 @@
           </div>
 
           <div class="borehole-stats">
-            <div><span>Toplam</span><strong id="bhStatTotal">0</strong></div>
-            <div><span>Planlandı</span><strong id="bhStatPlanned">0</strong></div>
-            <div><span>Sahada</span><strong id="bhStatActive">0</strong></div>
-            <div><span>Tamamlandı</span><strong id="bhStatDone">0</strong></div>
+            <button class="borehole-stat-card active" type="button" data-bh-filter="all">
+              <span>Toplam</span><strong id="bhStatTotal">0</strong>
+            </button>
+            <button class="borehole-stat-card" type="button" data-bh-filter="Planlandı">
+              <span>Planlandı</span><strong id="bhStatPlanned">0</strong>
+            </button>
+            <button class="borehole-stat-card" type="button" data-bh-filter="Sahada">
+              <span>Sahada</span><strong id="bhStatActive">0</strong>
+            </button>
+            <button class="borehole-stat-card" type="button" data-bh-filter="Tamamlandı">
+              <span>Tamamlandı</span><strong id="bhStatDone">0</strong>
+            </button>
+          </div>
+
+          <div class="borehole-progress-panel">
+            <div class="borehole-progress-head">
+              <strong>İş İlerlemesi</strong>
+              <span id="bhProgressText">0 / 0 tamamlandı · %0</span>
+            </div>
+            <div class="progress borehole-progress"><span id="bhProgressBar" style="width:0%"></span></div>
           </div>
 
           <div id="boreholeMap" class="map borehole-map"></div>
