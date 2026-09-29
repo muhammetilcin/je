@@ -168,8 +168,10 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
   .topbar{align-items:flex-start}.topbar h1{font-size:23px}
   .topbar-actions{flex-direction:column;align-items:flex-end}
   .stats-grid{grid-template-columns:1fr 1fr}
-  .map-layout{grid-template-columns:1fr}
+  .map-layout,.map-layout.map-sidebar-collapsed{grid-template-columns:1fr}
   .map-side{height:auto}.main-map{height:58vh}
+  .map-side-toggle{display:none}
+  .borehole-map{height:52vh}
   .role-cards{grid-template-columns:1fr}
   .borehole-stats{grid-template-columns:1fr 1fr}
   .borehole-project-picker{min-width:0;width:100%}
@@ -221,3 +223,64 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 }
 .attachment-card:hover{border-color:#aacbc2;background:#f7fbfa}
 .attachment-card span{color:var(--muted);font-size:12px}
+
+
+.map-layout{
+  position:relative;
+  transition:grid-template-columns .22s ease;
+}
+.map-layout.map-sidebar-collapsed{
+  grid-template-columns:0 1fr;
+}
+.map-layout.map-sidebar-collapsed .map-side{
+  opacity:0;
+  pointer-events:none;
+  overflow:hidden;
+  padding:0;
+  border-width:0;
+}
+.map-side{
+  transition:opacity .18s ease,padding .18s ease,border-width .18s ease;
+}
+.map-side-toggle{
+  position:absolute;
+  left:294px;
+  top:18px;
+  z-index:900;
+  width:32px;
+  height:42px;
+  border:1px solid var(--border);
+  border-radius:0 9px 9px 0;
+  background:#fff;
+  color:#24413a;
+  font-size:24px;
+  line-height:1;
+  box-shadow:0 4px 14px rgba(0,0,0,.1);
+}
+.map-layout.map-sidebar-collapsed .map-side-toggle{
+  left:0;
+}
+.borehole-map{
+  height:430px;
+  margin-bottom:16px;
+}
+.borehole-table-wrap{
+  margin-top:8px;
+}
+.leaflet-tooltip.borehole-label{
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(31,111,95,.35);
+  border-radius:6px;
+  box-shadow:0 1px 5px rgba(0,0,0,.12);
+  color:#173b32;
+  font-weight:800;
+  font-size:12px;
+  padding:3px 6px;
+}
+.leaflet-tooltip.borehole-label:before{
+  display:none;
+}
+.leaflet-control-layers{
+  border-radius:10px;
+  box-shadow:0 3px 12px rgba(0,0,0,.12);
+}
