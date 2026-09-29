@@ -465,7 +465,7 @@ async function getOrCreateCompany(name) {
   return created;
 }
 
-async function createProject(event) {
+async function saveProject(event) {
   event.preventDefault();
   if (currentRole !== "admin") return;
 
@@ -478,24 +478,36 @@ async function createProject(event) {
       short_name: $("projectName").value.trim(),
       area_ha: Number($("projectArea").value),
       company_id: company.id,
-      status: $("projectStatus").value,
-      progress: 0,
-      created_by: currentUser.id
+      status: $("projectStatus").value
     };
 
-    const { data, error } = await sb
-      .from("projects")
-      .insert(payload)
-      .select("id")
-      .single();
+    if (editingProjectId) {
+      const { error } = await sb
+        .from("projects")
+        .update(payload)
+        .eq("id", editingProjectId);
 
-    if (error) throw error;
+      if (error) throw error;
+      activeProjectId = editingProjectId;
+      toast("İş bilgileri güncellendi.");
+    } else {
+      const { data, error } = await sb
+        .from("projects")
+        .insert({
+          ...payload,
+          progress: 0,
+          created_by: currentUser.id
+        })
+        .select("id")
+        .single();
 
-    activeProjectId = data.id;
+      if (error) throw error;
+      activeProjectId = data.id;
+      toast("Yeni iş merkezi veritabanına kaydedildi.");
+    }
+
     closeModal();
     await loadAppData();
-    switchView("map");
-    toast("Yeni iş merkezi veritabanına kaydedildi.");
   } catch (err) {
     console.error(err);
     toast(err.message || "İş kaydedilemedi.", 5000);
@@ -588,7 +600,6 @@ async function importProjectsFromExcel(file) {
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
 
-    // BETS dışa aktarımında ilk satırlar başlık/açıklama, gerçek sütun başlıkları daha aşağıda.
     const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
     let headerRowIndex = matrix.findIndex(row => {
       const normalized = row.map(normalizeHeader);
@@ -598,23 +609,23 @@ async function importProjectsFromExcel(file) {
     if (headerRowIndex < 0) headerRowIndex = 0;
 
     const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: "" });
-
     if (!rows.length) throw new Error("Excel dosyasında veri satırı bulunamadı.");
 
     let added = 0;
+    let updated = 0;
     let skipped = 0;
     let failed = 0;
-    let firstCreatedId = null;
-
-    const existingNames = new Set(projects.map(p => normalizeHeader(p.name)));
+    let firstTouchedId = null;
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
+
       try {
+        const sourceNo = String(firstValue(row, ["İş No","İş Numarası","Evrak Kodu","Proje No"]) || "").trim();
         const name = projectNameFromRow(row, i);
         const nameKey = normalizeHeader(name);
 
-        if (!nameKey || existingNames.has(nameKey)) {
+        if (!nameKey) {
           skipped++;
           continue;
         }
@@ -641,35 +652,56 @@ async function importProjectsFromExcel(file) {
 
         const company = await getOrCreateCompany(companyName);
 
-        const { data, error } = await sb
-          .from("projects")
-          .insert({
-            short_name: name,
-            area_ha: area,
-            company_id: company.id,
-            status,
-            progress,
-            created_by: currentUser.id
-          })
-          .select("id")
-          .single();
+        const existing = projects.find(p => {
+          const current = normalizeHeader(p.name);
+          return current === nameKey || (sourceNo && current === normalizeHeader(sourceNo));
+        });
 
-        if (error) throw error;
-        if (!firstCreatedId) firstCreatedId = data.id;
-        existingNames.add(nameKey);
-        added++;
+        if (existing) {
+          const { error } = await sb
+            .from("projects")
+            .update({
+              short_name: name,
+              area_ha: area,
+              company_id: company.id,
+              status,
+              progress
+            })
+            .eq("id", existing.id);
+
+          if (error) throw error;
+          if (!firstTouchedId) firstTouchedId = existing.id;
+          updated++;
+        } else {
+          const { data, error } = await sb
+            .from("projects")
+            .insert({
+              short_name: name,
+              area_ha: area,
+              company_id: company.id,
+              status,
+              progress,
+              created_by: currentUser.id
+            })
+            .select("id")
+            .single();
+
+          if (error) throw error;
+          if (!firstTouchedId) firstTouchedId = data.id;
+          added++;
+        }
       } catch (rowError) {
         console.error("Excel satırı aktarılamadı:", i + 2, rowError, row);
         failed++;
       }
     }
 
-    if (firstCreatedId) activeProjectId = firstCreatedId;
+    if (firstTouchedId) activeProjectId = firstTouchedId;
     await loadAppData();
 
     toast(
-      `Excel aktarımı tamamlandı: ${added} iş eklendi, ${skipped} tekrar/boş satır atlandı${failed ? `, ${failed} satır hata verdi` : ""}.`,
-      6500
+      `Excel aktarımı tamamlandı: ${added} yeni iş, ${updated} güncellenen iş${skipped ? `, ${skipped} atlanan satır` : ""}${failed ? `, ${failed} hata` : ""}.`,
+      7000
     );
   } catch (err) {
     console.error(err);
@@ -678,7 +710,6 @@ async function importProjectsFromExcel(file) {
     $("excelImportInput").value = "";
   }
 }
-
 
 
 function exportProjectsToExcel() {
@@ -724,13 +755,59 @@ function exportProjectsToExcel() {
 
 function openModal() {
   if (currentRole !== "admin") return;
+  editingProjectId = null;
+  $("projectModalTitle").textContent = "Yeni İş Oluştur";
+  $("projectModalSubtitle").textContent = "İşi kısa bir ad ve hektar bilgisiyle kaydedin.";
+  $("projectSaveBtn").textContent = "İşi Kaydet";
+  $("projectForm").reset();
   $("projectModal").classList.remove("hidden");
   $("projectName").focus();
+}
+
+function openEditModal(projectId) {
+  if (currentRole !== "admin") return;
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return toast("İş bulunamadı.");
+
+  editingProjectId = p.id;
+  $("projectModalTitle").textContent = "İşi Düzenle";
+  $("projectModalSubtitle").textContent = "İş adı, hektar, firma ve durum bilgilerini güncelleyin.";
+  $("projectSaveBtn").textContent = "Değişiklikleri Kaydet";
+  $("projectName").value = p.name || "";
+  $("projectArea").value = Number(p.area || 0);
+  $("projectCompany").value = p.company === "Firma atanmadı" ? "" : (p.company || "");
+  $("projectStatus").value = p.status || "Planlandı";
+  $("projectModal").classList.remove("hidden");
+  $("projectName").focus();
+}
+
+async function deleteProject(projectId) {
+  if (currentRole !== "admin") return;
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return;
+
+  const ok = window.confirm(
+    `"${p.name}" işi silinsin mi?\n\nBu işe bağlı çalışma alanı, sondaj ve saha kayıtları da silinecektir.`
+  );
+  if (!ok) return;
+
+  try {
+    const { error } = await sb.from("projects").delete().eq("id", projectId);
+    if (error) throw error;
+
+    if (activeProjectId === projectId) activeProjectId = null;
+    await loadAppData();
+    toast("İş silindi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "İş silinemedi.", 5000);
+  }
 }
 
 function closeModal() {
   $("projectModal").classList.add("hidden");
   $("projectForm").reset();
+  editingProjectId = null;
 }
 
 function wireEvents() {
@@ -783,7 +860,7 @@ function wireEvents() {
     if (e.target.id === "projectModal") closeModal();
   });
 
-  $("projectForm").addEventListener("submit", createProject);
+  $("projectForm").addEventListener("submit", saveProject);
 
   $("mapProjectSelect").addEventListener("change", e => {
     activeProjectId = e.target.value || null;
