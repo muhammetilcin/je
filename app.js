@@ -487,6 +487,147 @@ async function createProject(event) {
   }
 }
 
+
+function normalizeHeader(value="") {
+  return String(value)
+    .trim()
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g,"i")
+    .replace(/ğ/g,"g")
+    .replace(/ü/g,"u")
+    .replace(/ş/g,"s")
+    .replace(/ö/g,"o")
+    .replace(/ç/g,"c")
+    .replace(/[^a-z0-9]+/g," ")
+    .trim();
+}
+
+function firstValue(row, aliases) {
+  const entries = Object.entries(row || {});
+  const normalizedAliases = aliases.map(normalizeHeader);
+  for (const [key, value] of entries) {
+    const nk = normalizeHeader(key);
+    if (normalizedAliases.includes(nk) && value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+  return "";
+}
+
+function parseNumberTR(value) {
+  if (typeof value === "number") return value;
+  const s = String(value ?? "").trim().replace(/\s/g,"");
+  if (!s) return 0;
+  if (s.includes(",") && s.includes(".")) {
+    return Number(s.replace(/\./g,"").replace(",", ".")) || 0;
+  }
+  if (s.includes(",")) return Number(s.replace(",", ".")) || 0;
+  return Number(s) || 0;
+}
+
+function projectNameFromRow(row, index) {
+  const name = firstValue(row, [
+    "İş Adı","İşin Adı","Kısa İş Adı","İş Kısa Adı","Proje Adı","Proje",
+    "İş No","İş Numarası","Evrak Kodu","İş","Adı"
+  ]);
+  return String(name || `AKTIF-IS-${index + 1}`).trim();
+}
+
+async function importProjectsFromExcel(file) {
+  if (currentRole !== "admin") return toast("Excel aktarımı yalnızca Yönetici rolüne açık.");
+  if (!file) return;
+
+  try {
+    if (!window.XLSX) throw new Error("Excel okuyucu yüklenemedi.");
+
+    toast("Excel okunuyor...", 1800);
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (!rows.length) throw new Error("Excel dosyasında veri satırı bulunamadı.");
+
+    let added = 0;
+    let skipped = 0;
+    let failed = 0;
+    let firstCreatedId = null;
+
+    const existingNames = new Set(projects.map(p => normalizeHeader(p.name)));
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const name = projectNameFromRow(row, i);
+        const nameKey = normalizeHeader(name);
+
+        if (!nameKey || existingNames.has(nameKey)) {
+          skipped++;
+          continue;
+        }
+
+        const area = parseNumberTR(firstValue(row, [
+          "Hektar","Ha","Alan (ha)","Alan Ha","Alan_ha","Hektar Bilgisi",
+          "Yüzölçümü (ha)","Yuzolcumu Ha","Alan"
+        ]));
+
+        const companyNameRaw = firstValue(row, [
+          "Firma","Firma Adı","Firma Adi","Yüklenici","Yuklenici",
+          "Yüklenici Firma","Yuklenici Firma","Yüklenici Adı","Yuklenici Adi"
+        ]);
+        const companyName = String(companyNameRaw || "Firma Atanmamış").trim();
+
+        const statusRaw = firstValue(row, [
+          "Durum","Aşama","Asama","İş Durumu","Is Durumu","Süreç","Surec","Son Durum"
+        ]);
+        const status = String(statusRaw || "Planlandı").trim();
+
+        const progress = Math.max(0, Math.min(100, parseNumberTR(firstValue(row, [
+          "İlerleme","Ilerleme","İlerleme %","Ilerleme %","Yüzde","Yuzde","Tamamlanma"
+        ]))));
+
+        const company = await getOrCreateCompany(companyName);
+
+        const { data, error } = await sb
+          .from("projects")
+          .insert({
+            short_name: name,
+            area_ha: area,
+            company_id: company.id,
+            status,
+            progress,
+            created_by: currentUser.id
+          })
+          .select("id")
+          .single();
+
+        if (error) throw error;
+        if (!firstCreatedId) firstCreatedId = data.id;
+        existingNames.add(nameKey);
+        added++;
+      } catch (rowError) {
+        console.error("Excel satırı aktarılamadı:", i + 2, rowError, row);
+        failed++;
+      }
+    }
+
+    if (firstCreatedId) activeProjectId = firstCreatedId;
+    await loadAppData();
+
+    toast(
+      `Excel aktarımı tamamlandı: ${added} iş eklendi, ${skipped} tekrar/boş satır atlandı${failed ? `, ${failed} satır hata verdi` : ""}.`,
+      6500
+    );
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Excel dosyası aktarılamadı.", 6000);
+  } finally {
+    $("excelImportInput").value = "";
+  }
+}
+
+
 function openModal() {
   if (currentRole !== "admin") return;
   $("projectModal").classList.remove("hidden");
@@ -533,6 +674,12 @@ function wireEvents() {
 
   $("newProjectBtn").onclick = openModal;
   $("newProjectBtn2").onclick = openModal;
+
+  $("excelImportBtn").onclick = () => $("excelImportInput").click();
+  $("excelImportInput").addEventListener("change", async e => {
+    const file = e.target.files?.[0];
+    if (file) await importProjectsFromExcel(file);
+  });
   $("closeModalBtn").onclick = closeModal;
   $("cancelModalBtn").onclick = closeModal;
   $("goProjectsBtn").onclick = () => switchView("projects");
