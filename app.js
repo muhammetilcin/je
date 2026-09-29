@@ -302,6 +302,38 @@ function renderAll() {
   renderMapProject();
   renderBoreholeMap();
 }
+function getStatusKey(status = "") {
+  const s = String(status).toLocaleLowerCase("tr-TR");
+
+  if (s.includes("tamam")) return "done";
+  if (s.includes("saha")) return "active";
+  if (s.includes("kontrol")) return "review";
+  return "planned";
+}
+
+function getStatusColor(status = "") {
+  const key = getStatusKey(status);
+
+  return {
+    planned: "#9aa3ad", // gri
+    active: "#e0b100",  // sarı
+    review: "#3b82f6",  // mavi
+    done: "#22a06b"     // yeşil
+  }[key];
+}
+
+function getPointMarkerStyle(status = "", pointType = "Sondaj") {
+  const color = getStatusColor(status);
+  const isGeo = pointType === "Jeoteknik";
+
+  return {
+    radius: isGeo ? 9 : 7,
+    color,
+    fillColor: color,
+    fillOpacity: 0.9,
+    weight: isGeo ? 3 : 2
+  };
+}
 
 function getProjectProgress(projectId) {
   const rows = boreholeRecords.filter(b => b.project_id === projectId && (b.point_type || "Sondaj") === "Sondaj");
@@ -496,11 +528,10 @@ function renderMapProject() {
         ? `${record.borehole_code} · ${record.method}`
         : record.borehole_code;
 
-      const mainMarker = L.circleMarker([Number(record.latitude), Number(record.longitude)], {
-        radius: record.point_type === "Jeoteknik" ? 8 : 7,
-        weight: 2,
-        fillOpacity: .9
-      });
+      const mainMarker = L.circleMarker(
+        [Number(record.latitude), Number(record.longitude)],
+        getPointMarkerStyle(record.status, record.point_type || "Sondaj")
+      );
       mainMarker.bindTooltip(escapeHtml(label), {
         permanent: true,
         direction: "right",
@@ -510,12 +541,14 @@ function renderMapProject() {
       mainMarker.on("click", () => openBoreholeModal(record.id));
       mainMarker.addTo(mainBoreholeLayer);
 
-      L.circleMarker([Number(record.latitude), Number(record.longitude)], {
-        radius: 5,
-        weight: 1,
-        fillOpacity: .85
-      }).addTo(dashBoreholeLayer);
-    });
+      L.circleMarker((
+        [Number(record.latitude), Number(record.longitude)],
+        {
+          ...getPointMarkerStyle(record.status, record.point_type || "Sondaj"),
+          radius: record.point_type === "Jeoteknik" ? 7 : 5,
+          weight: 1.5
+        }
+      ).addTo(dashBoreholeLayer);
 
     mainBoreholeLayer.addTo(mainMap);
     dashBoreholeLayer.addTo(dashboardMap);
@@ -696,11 +729,10 @@ function renderBoreholeMap() {
     rows.forEach(b => {
       if (!Number.isFinite(Number(b.latitude)) || !Number.isFinite(Number(b.longitude))) return;
 
-      const marker = L.circleMarker([Number(b.latitude), Number(b.longitude)], {
-        radius: 7,
-        weight: 2,
-        fillOpacity: .92
-      });
+      const marker = L.circleMarker(
+        [Number(b.latitude), Number(b.longitude)],
+        getPointMarkerStyle(b.status, b.point_type || "Sondaj")
+      );
 
       const mapLabel = (b.point_type || "Sondaj") === "Jeoteknik" && b.method
         ? `${b.borehole_code} · ${b.method}`
