@@ -168,12 +168,12 @@
   <div id="projectModal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-head">
-        <div><h2>Yeni İş Oluştur</h2><p>İşi kısa bir ad ve hektar bilgisiyle kaydedin.</p></div>
+        <div><h2 id="projectModalTitle">Yeni İş Oluştur</h2><p id="projectModalSubtitle">İşi kısa bir ad ve hektar bilgisiyle kaydedin.</p></div>
         <button id="closeModalBtn" class="icon-btn">×</button>
       </div>
       <form id="projectForm">
-        <label class="field-label">Kısa iş adı</label>
-        <input id="projectName" class="input" placeholder="Örn. BAYRAKLI-01" required maxlength="40" />
+        <label class="field-label">İş adı</label>
+        <input id="projectName" class="input" placeholder="Örn. Buca - Doğancılar - 1,45 ha" required maxlength="120" />
         <label class="field-label">Alan (ha)</label>
         <input id="projectArea" class="input" type="number" min="0" step="0.01" placeholder="245" required />
         <label class="field-label">Firma</label>
@@ -184,7 +184,7 @@
         </select>
         <div class="modal-actions">
           <button type="button" id="cancelModalBtn" class="btn ghost">Vazgeç</button>
-          <button type="submit" class="btn primary">İşi Kaydet</button>
+          <button id="projectSaveBtn" type="submit" class="btn primary">İşi Kaydet</button>
         </div>
       </form>
     </div>
