@@ -527,8 +527,8 @@ function parseNumberTR(value) {
 
 function projectNameFromRow(row, index) {
   const name = firstValue(row, [
-    "İş Adı","İşin Adı","Kısa İş Adı","İş Kısa Adı","Proje Adı","Proje",
-    "İş No","İş Numarası","Evrak Kodu","İş","Adı"
+    "İş No","İş Numarası","Kısa İş Adı","İş Kısa Adı","Evrak Kodu",
+    "Proje No","Proje","İş Adı","İşin Adı","Proje Adı","İş","Adı"
   ]);
   return String(name || `AKTIF-IS-${index + 1}`).trim();
 }
@@ -545,7 +545,17 @@ async function importProjectsFromExcel(file) {
     const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    // BETS dışa aktarımında ilk satırlar başlık/açıklama, gerçek sütun başlıkları daha aşağıda.
+    const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    let headerRowIndex = matrix.findIndex(row => {
+      const normalized = row.map(normalizeHeader);
+      return normalized.includes("is no") &&
+        (normalized.includes("hektar") || normalized.includes("is adi konu") || normalized.includes("durum"));
+    });
+    if (headerRowIndex < 0) headerRowIndex = 0;
+
+    const rows = XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: "" });
 
     if (!rows.length) throw new Error("Excel dosyasında veri satırı bulunamadı.");
 
@@ -628,6 +638,48 @@ async function importProjectsFromExcel(file) {
 }
 
 
+
+function exportProjectsToExcel() {
+  if (currentRole !== "admin") return toast("Excel dışa aktarımı yalnızca Yönetici rolüne açık.");
+  if (!projects.length) return toast("Dışa aktarılacak iş bulunamadı.");
+
+  try {
+    if (!window.XLSX) throw new Error("Excel kütüphanesi yüklenemedi.");
+
+    const rows = projects.map(p => ({
+      "İş No": p.name,
+      "Hektar": Number(p.area || 0),
+      "Firma": p.company || "",
+      "Durum": p.status || "",
+      "İlerleme (%)": Number(p.progress || 0),
+      "Sondaj Sayısı": p.boreholes?.features?.length || 0
+    }));
+
+    const sheet = XLSX.utils.json_to_sheet(rows);
+    sheet["!cols"] = [
+      { wch: 20 }, { wch: 12 }, { wch: 28 },
+      { wch: 24 }, { wch: 14 }, { wch: 14 }
+    ];
+
+    const book = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(book, sheet, "İşler");
+
+    const d = new Date();
+    const stamp = [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0")
+    ].join("-");
+
+    XLSX.writeFile(book, `JEO_Isler_${stamp}.xlsx`);
+    toast("İşler Excel dosyası olarak dışa aktarıldı.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Excel dışa aktarımı yapılamadı.", 5000);
+  }
+}
+
+
 function openModal() {
   if (currentRole !== "admin") return;
   $("projectModal").classList.remove("hidden");
@@ -676,6 +728,7 @@ function wireEvents() {
   $("newProjectBtn2").onclick = openModal;
 
   $("excelImportBtn").onclick = () => $("excelImportInput").click();
+  $("excelExportBtn").onclick = exportProjectsToExcel;
   $("excelImportInput").addEventListener("change", async e => {
     const file = e.target.files?.[0];
     if (file) await importProjectsFromExcel(file);
