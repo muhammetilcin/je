@@ -13,8 +13,9 @@ let activeBoreholeId = null;
 let editingProjectId = null;
 let mapsInitialized = false;
 
-let mainMap, dashboardMap;
+let mainMap, dashboardMap, boreholeMap;
 let mainBoundaryLayer, mainBoreholeLayer, dashBoundaryLayer, dashBoreholeLayer;
+let boreholeBoundaryLayer, boreholePointsLayer;
 
 const $ = (id) => document.getElementById(id);
 
@@ -51,17 +52,40 @@ function showApp() {
   setTimeout(() => {
     mainMap?.invalidateSize();
     dashboardMap?.invalidateSize();
+    boreholeMap?.invalidateSize();
   }, 120);
+}
+
+function createBaseLayers() {
+  return {
+    "Sokak Haritası": L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; OpenStreetMap katkıcıları',
+      maxZoom: 20
+    }),
+    "Uydu": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      attribution: "Tiles &copy; Esri",
+      maxZoom: 20
+    })
+  };
 }
 
 function initMaps() {
   mainMap = L.map("mainMap").setView([38.42, 27.14], 10);
   dashboardMap = L.map("dashboardMap", { zoomControl: false }).setView([38.42, 27.14], 9);
+  boreholeMap = L.map("boreholeMap").setView([38.42, 27.14], 10);
 
-  const tiles = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const attr = '&copy; OpenStreetMap katkıcıları';
-  L.tileLayer(tiles, { attribution: attr, maxZoom: 20 }).addTo(mainMap);
-  L.tileLayer(tiles, { attribution: attr, maxZoom: 20 }).addTo(dashboardMap);
+  const mainBases = createBaseLayers();
+  mainBases["Sokak Haritası"].addTo(mainMap);
+  L.control.layers(mainBases, null, { position: "topright", collapsed: false }).addTo(mainMap);
+
+  const boreholeBases = createBaseLayers();
+  boreholeBases["Sokak Haritası"].addTo(boreholeMap);
+  L.control.layers(boreholeBases, null, { position: "topright", collapsed: false }).addTo(boreholeMap);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; OpenStreetMap katkıcıları',
+    maxZoom: 20
+  }).addTo(dashboardMap);
 }
 
 function applyRole() {
@@ -90,8 +114,19 @@ function switchView(view) {
   $("pageTitle").textContent = titles[view]?.[0] || "";
   $("pageSubtitle").textContent = titles[view]?.[1] || "";
 
-  if (view === "map") setTimeout(() => mainMap?.invalidateSize(), 100);
+  if (view === "map") {
+    setTimeout(() => {
+      mainMap?.invalidateSize();
+      renderMapProject();
+    }, 120);
+  }
   if (view === "dashboard") setTimeout(() => dashboardMap?.invalidateSize(), 100);
+  if (view === "boreholes") {
+    setTimeout(() => {
+      boreholeMap?.invalidateSize();
+      renderBoreholeMap();
+    }, 120);
+  }
 }
 
 async function initializeAuth() {
@@ -223,6 +258,7 @@ function renderAll() {
   renderBoreholeProjectSelect();
   renderBoreholes();
   renderMapProject();
+  renderBoreholeMap();
 }
 
 function renderStats() {
@@ -337,7 +373,12 @@ function renderMapProject() {
       const name = String(props.name || props.Name || props.NAME || props.id || props.ID || "Sondaj");
       const record = boreholeRecords.find(b => b.project_id === p.id && b.borehole_code === name);
       const status = record?.status || "Planlandı";
-      layer.bindTooltip(`${escapeHtml(name)} · ${escapeHtml(status)}`, { direction: "top" });
+      layer.bindTooltip(`${escapeHtml(name)}`, {
+        permanent: true,
+        direction: "right",
+        offset: [8, 0],
+        className: "borehole-label"
+      });
       layer.on("click", () => {
         if (record) openBoreholeModal(record.id);
       });
@@ -355,6 +396,81 @@ function renderMapProject() {
     dashboardMap.fitBounds(merged.pad(.15));
   }
 }
+
+
+function renderBoreholeMap() {
+  if (!mapsInitialized || !boreholeMap) return;
+
+  if (boreholeBoundaryLayer) boreholeMap.removeLayer(boreholeBoundaryLayer);
+  if (boreholePointsLayer) boreholeMap.removeLayer(boreholePointsLayer);
+  boreholeBoundaryLayer = boreholePointsLayer = null;
+
+  const p = projects.find(x => x.id === activeProjectId);
+  if (!p) return;
+
+  const bounds = [];
+
+  if (p.boundary) {
+    boreholeBoundaryLayer = L.geoJSON(p.boundary, {
+      style: { weight: 3, fillOpacity: .06 }
+    }).addTo(boreholeMap);
+    try { bounds.push(boreholeBoundaryLayer.getBounds()); } catch {}
+  }
+
+  const rows = boreholeRecords.filter(b => b.project_id === p.id);
+  if (rows.length) {
+    boreholePointsLayer = L.layerGroup();
+
+    rows.forEach(b => {
+      if (!Number.isFinite(Number(b.latitude)) || !Number.isFinite(Number(b.longitude))) return;
+
+      const marker = L.circleMarker([Number(b.latitude), Number(b.longitude)], {
+        radius: 7,
+        weight: 2,
+        fillOpacity: .92
+      });
+
+      marker.bindTooltip(escapeHtml(b.borehole_code), {
+        permanent: true,
+        direction: "right",
+        offset: [8, 0],
+        className: "borehole-label"
+      });
+
+      marker.on("click", () => openBoreholeModal(b.id));
+      marker.addTo(boreholePointsLayer);
+    });
+
+    boreholePointsLayer.addTo(boreholeMap);
+    try {
+      const pointBounds = L.latLngBounds(
+        rows
+          .filter(b => Number.isFinite(Number(b.latitude)) && Number.isFinite(Number(b.longitude)))
+          .map(b => [Number(b.latitude), Number(b.longitude)])
+      );
+      if (pointBounds.isValid()) bounds.push(pointBounds);
+    } catch {}
+  }
+
+  const valid = bounds.filter(b => b?.isValid?.());
+  if (valid.length) {
+    const merged = valid[0];
+    valid.slice(1).forEach(b => merged.extend(b));
+    boreholeMap.fitBounds(merged.pad(.12), { maxZoom: 17 });
+  }
+}
+
+function toggleMapSidebar() {
+  const layout = document.querySelector("#mapView .map-layout");
+  if (!layout) return;
+
+  const collapsed = layout.classList.toggle("map-sidebar-collapsed");
+  $("toggleMapSidebarBtn").textContent = collapsed ? "›" : "‹";
+  $("toggleMapSidebarBtn").title = collapsed ? "Sol paneli aç" : "Sol paneli kapat";
+
+  setTimeout(() => mainMap?.invalidateSize(), 260);
+}
+
 
 async function fileToGeoJSON(file) {
   if (!file) throw new Error("Dosya seçilmedi.");
@@ -1175,6 +1291,7 @@ function wireEvents() {
     renderBoreholeProjectSelect();
     renderBoreholes();
     renderMapProject();
+    renderBoreholeMap();
   });
 
   $("boreholeProjectSelect").addEventListener("change", e => {
@@ -1183,6 +1300,7 @@ function wireEvents() {
     renderBoreholeProjectSelect();
     renderBoreholes();
     renderMapProject();
+    renderBoreholeMap();
   });
 
   $("closeBoreholeModalBtn").onclick = closeBoreholeModal;
@@ -1193,6 +1311,7 @@ function wireEvents() {
   $("boreholeForm").addEventListener("submit", saveBorehole);
   $("fieldEntryForm").addEventListener("submit", addFieldEntry);
   $("uploadBoreholeFilesBtn").onclick = uploadBoreholeFiles;
+  $("toggleMapSidebarBtn").onclick = toggleMapSidebar;
 
   $("importBoundaryBtn").onclick = () => importLayer("boundary");
   $("importBoreholesBtn").onclick = () => importLayer("borehole");
