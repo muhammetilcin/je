@@ -114,17 +114,31 @@ function applyRole() {
 
 function switchView(view) {
   if (view === "users" && currentRole !== "admin") return;
+
+  const workspaceViews = ["dashboard","projects","map","boreholes"];
+
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.querySelectorAll(".nav-item").forEach(v => v.classList.remove("active"));
   $(view + "View")?.classList.add("active");
-  document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add("active");
+
+  document.querySelectorAll(".nav-item").forEach(v => v.classList.remove("active"));
+  if (workspaceViews.includes(view)) {
+    document.querySelector('.nav-item[data-view="dashboard"]')?.classList.add("active");
+    $("workspaceTabs")?.classList.remove("hidden");
+  } else {
+    document.querySelector('.nav-item[data-view="users"]')?.classList.add("active");
+    $("workspaceTabs")?.classList.add("hidden");
+  }
+
+  document.querySelectorAll(".workspace-tab").forEach(tab => {
+    tab.classList.toggle("active", tab.dataset.workspaceView === view);
+  });
 
   const titles = {
-    dashboard: ["Kontrol Paneli", "Tüm işleri, saha durumunu ve ilerlemeyi tek ekrandan izleyin."],
-    projects: ["İşler", "Mikrobölgeleme ve jeolojik-jeoteknik işleri yönetin."],
-    map: ["Harita", "Çalışma alanlarını ve sondaj/ölçüm noktalarını yönetin."],
-    boreholes: ["Saha Noktaları", "Sondaj ve jeoteknik noktalarını konum, saha kaydı ve dosyalarıyla yönetin."],
-    users: ["Kullanıcılar", "Yönetici ve firma yetkilerini yönetin."]
+    dashboard: ["Çalışmalar", "İşleri, saha durumunu ve ilerlemeyi tek çalışma alanından yönetin."],
+    projects: ["Çalışmalar", "İş listesini, firma ve ilerleme durumlarını yönetin."],
+    map: ["Çalışmalar", "Çalışma alanlarını ve saha noktalarını harita üzerinden yönetin."],
+    boreholes: ["Çalışmalar", "Sondaj ve jeoteknik noktalarını konum, saha kaydı ve dosyalarıyla yönetin."],
+    users: ["Yönetim", "Kullanıcı, firma ve yetki ayarlarını yönetin."]
   };
   $("pageTitle").textContent = titles[view]?.[0] || "";
   $("pageSubtitle").textContent = titles[view]?.[1] || "";
@@ -1613,6 +1627,10 @@ function closeModal() {
 function wireEvents() {
   document.querySelectorAll(".nav-item").forEach(btn => {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
+  });
+
+  document.querySelectorAll(".workspace-tab").forEach(btn => {
+    btn.addEventListener("click", () => switchView(btn.dataset.workspaceView));
   });
 
   $("loginForm").addEventListener("submit", async e => {
