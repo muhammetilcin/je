@@ -130,13 +130,21 @@
             <div class="upload-group admin-only">
               <label class="field-label">Çalışma alanı KML/KMZ</label>
               <input id="boundaryFile" type="file" accept=".kml,.kmz" class="file-input" />
-              <button id="importBoundaryBtn" class="btn secondary full">Çalışma Alanını İçe Aktar</button>
+              <button id="importBoundaryBtn" class="btn secondary full">Yükle / Değiştir</button>
+              <div class="layer-current">
+                <span id="boundaryLayerInfo">Yüklü çalışma alanı yok</span>
+                <button id="deleteBoundaryLayerBtn" class="btn danger mini" type="button">Sil</button>
+              </div>
             </div>
 
             <div class="upload-group admin-only">
               <label class="field-label">Sondaj noktaları KML/KMZ</label>
               <input id="boreholeFile" type="file" accept=".kml,.kmz" class="file-input" />
-              <button id="importBoreholesBtn" class="btn secondary full">Sondajları İçe Aktar</button>
+              <button id="importBoreholesBtn" class="btn secondary full">Yükle / Değiştir</button>
+              <div class="layer-current">
+                <span id="boreholeLayerInfo">Yüklü sondaj KML/KMZ yok</span>
+                <button id="deleteBoreholeLayerBtn" class="btn danger mini" type="button">Sil</button>
+              </div>
             </div>
 
             <div class="info-box">
