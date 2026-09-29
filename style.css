@@ -161,6 +161,8 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
     position:fixed;z-index:2000;left:0;right:0;bottom:0;top:auto;height:auto;padding:8px 10px;
     flex-direction:row;align-items:center
   }
+  .sidebar-toggle{display:none}
+  #appShell.sidebar-collapsed{display:block}
   .brand,.sidebar-bottom{display:none}
   .nav{width:100%;flex-direction:row;justify-content:space-around}
   .nav-item{padding:9px 12px}
@@ -185,11 +187,7 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 .borehole-stats{
   display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:0 0 16px
 }
-.borehole-stats>div{
-  border:1px solid var(--border);border-radius:12px;padding:12px;background:#f8faf9
-}
-.borehole-stats span{display:block;color:var(--muted);font-size:12px}
-.borehole-stats strong{display:block;font-size:24px;margin-top:4px}
+
 .bh-status.planned{background:#f0f3f5}
 .bh-status.active{background:#fff4d8}
 .bh-status.review{background:#e9f0ff}
@@ -292,3 +290,38 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 .attachment-main{min-width:0;display:flex;justify-content:space-between;gap:10px;align-items:center;text-decoration:none;color:var(--text)}
 .attachment-main strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .attachment-actions{display:flex;gap:6px;align-items:center}
+
+
+.sidebar{position:sticky}
+.sidebar-toggle{
+  position:absolute;right:-16px;top:20px;z-index:2100;width:32px;height:38px;
+  border:1px solid #2e4a41;border-radius:0 9px 9px 0;background:#1b3029;color:#fff;
+  font-size:22px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.14)
+}
+#appShell{transition:grid-template-columns .22s ease}
+#appShell.sidebar-collapsed{grid-template-columns:72px 1fr}
+#appShell.sidebar-collapsed .sidebar{padding-left:10px;padding-right:10px}
+#appShell.sidebar-collapsed .brand{justify-content:center}
+#appShell.sidebar-collapsed .brand>div:last-child,
+#appShell.sidebar-collapsed .nav-item span,
+#appShell.sidebar-collapsed .signed-user{display:none}
+#appShell.sidebar-collapsed .nav-item{justify-content:center;font-size:20px;padding-left:8px;padding-right:8px}
+#appShell.sidebar-collapsed .logout-btn{font-size:0;padding:10px}
+#appShell.sidebar-collapsed .logout-btn:after{content:"↪";font-size:20px}
+#appShell.sidebar-collapsed .sidebar-toggle{right:-16px}
+
+.borehole-stat-card{
+  border:1px solid var(--border);border-radius:12px;padding:12px;background:#f8faf9;
+  text-align:left;color:var(--text);transition:.15s ease;box-shadow:none
+}
+.borehole-stat-card:hover{border-color:#9fc3b9;background:#f2f8f6;transform:translateY(-1px)}
+.borehole-stat-card.active{border-color:var(--accent);background:var(--accent-2);box-shadow:0 0 0 2px rgba(31,111,95,.08)}
+.borehole-stat-card span{display:block;color:var(--muted);font-size:12px}
+.borehole-stat-card strong{display:block;font-size:24px;margin-top:4px}
+.borehole-progress-panel{
+  margin:0 0 16px;padding:12px 14px;border:1px solid var(--border);
+  border-radius:12px;background:#fbfcfc
+}
+.borehole-progress-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px}
+.borehole-progress-head span{color:var(--muted);font-size:13px}
+.borehole-progress{height:10px}
