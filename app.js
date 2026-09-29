@@ -112,6 +112,67 @@ function applyRole() {
   $("sidebarRoleBadge").textContent = label;
 }
 
+function switchDashboardPanel(panel) {
+  document.querySelectorAll(".dashboard-panel").forEach(el => {
+    el.classList.add("hidden");
+  });
+
+  document.querySelectorAll(".dashboard-switch-btn").forEach(btn => {
+    btn.classList.remove("active");
+  });
+
+  if (panel === "overview") $("dashboardOverviewPanel")?.classList.remove("hidden");
+  if (panel === "points") $("dashboardPointsPanel")?.classList.remove("hidden");
+  if (panel === "tracking") $("dashboardTrackingPanel")?.classList.remove("hidden");
+
+  document.querySelector(`.dashboard-switch-btn[data-dashboard-panel="${panel}"]`)?.classList.add("active");
+
+  if (panel === "points") {
+    setTimeout(() => dashboardMap?.invalidateSize(), 120);
+  }
+
+  if (panel === "tracking") {
+    renderTrackingChart();
+  }
+}
+
+function renderTrackingChart() {
+  const el = $("trackingChart");
+  if (!el) return;
+
+  if (!projects.length) {
+    el.innerHTML = '<div class="empty-state">Henüz iş yok.</div>';
+    return;
+  }
+
+  el.innerHTML = projects.map(p => {
+    const progress = getProjectProgress(p.id).percent;
+    return `
+      <div class="track-row">
+        <div class="track-row-top">
+          <strong>${escapeHtml(p.name)}</strong>
+          <span>%${progress}</span>
+        </div>
+        <div class="progress">
+          <span style="width:${progress}%"></span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderDashboardPointSummary() {
+  const planned = boreholeRecords.filter(x => getStatusKey(x.status) === "planned").length;
+  const active = boreholeRecords.filter(x => getStatusKey(x.status) === "active").length;
+  const review = boreholeRecords.filter(x => getStatusKey(x.status) === "review").length;
+  const done = boreholeRecords.filter(x => getStatusKey(x.status) === "done").length;
+
+  if ($("dashPointPlanned")) $("dashPointPlanned").textContent = planned;
+  if ($("dashPointActive")) $("dashPointActive").textContent = active;
+  if ($("dashPointReview")) $("dashPointReview").textContent = review;
+  if ($("dashPointDone")) $("dashPointDone").textContent = done;
+}
+
 function switchView(view) {
   if (view === "users" && currentRole !== "admin") return;
 
@@ -1812,15 +1873,24 @@ function wireEvents() {
   $("importBoreholesBtn").onclick = () => importLayer("borehole");
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  wireEvents();
+  
+  document.querySelectorAll(".dashboard-switch-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      switchDashboardPanel(btn.dataset.dashboardPanel);
+    });
+  });
+  
+  document.addEventListener("DOMContentLoaded", () => {
+    wireEvents();
+  
 
   if (localStorage.getItem("je_sidebar_collapsed") === "1") {
     $("appShell").classList.add("sidebar-collapsed");
     $("toggleAppSidebarBtn").textContent = "›";
     $("toggleAppSidebarBtn").title = "Menüyü genişlet";
   }
-
+  renderDashboardPointSummary();
+  renderTrackingChart();
   showAuth();
   initializeAuth();
 });
