@@ -199,6 +199,30 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 .bh-status.active{background:#fff4d8}
 .bh-status.review{background:#e9f0ff}
 .bh-status.done{background:#e8f5ed}
+.bh-status.planned{
+  background:#eef1f4;
+  color:#5f6b76;
+  border:1px solid #cfd6dd;
+}
+
+.bh-status.active{
+  background:#fff4cc;
+  color:#8a6a00;
+  border:1px solid #f0d36b;
+}
+
+.bh-status.review{
+  background:#e8f1ff;
+  color:#2563eb;
+  border:1px solid #b7d1ff;
+}
+
+.bh-status.done{
+  background:#e8f7ef;
+  color:#15803d;
+  border:1px solid #b9e2c8;
+}
+
 .modal-large{width:min(1120px,96vw);max-height:92vh;overflow:auto}
 .borehole-modal-grid{display:grid;grid-template-columns:minmax(300px,.8fr) minmax(420px,1.2fr);gap:18px}
 .form-grid{display:grid;gap:8px}
