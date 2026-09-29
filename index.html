@@ -667,6 +667,14 @@
                 </button>
 
                 <button
+                  id="saveDailyReportBtn"
+                  class="btn secondary"
+                  type="button"
+                >
+                  Kaydet
+                </button>
+
+                <button
                   id="copyDailyReportBtn"
                   class="btn secondary"
                   type="button"
@@ -691,6 +699,18 @@
               rows="22"
               placeholder="Gün sonu bilgi notu burada oluşacak..."
             ></textarea>
+
+            <div class="daily-report-archive">
+              <div class="subpanel-head">
+                <div>
+                  <h3>Rapor Arşivi</h3>
+                  <p>Kaydedilmiş son gün sonu bilgi notları.</p>
+                </div>
+              </div>
+              <div id="dailyReportArchiveList" class="managed-users-list">
+                <div class="empty-state">Kayıtlı raporlar yükleniyor...</div>
+              </div>
+            </div>
 
           </section>
 
