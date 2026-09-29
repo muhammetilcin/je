@@ -1,36 +1,54 @@
-const STORAGE_KEY = "je_projects_v1";
+const CONFIG = window.JEO_CONFIG || {};
+const sb = window.supabase?.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
 
-let projects = loadProjects();
-let currentRole = "admin";
-let activeProjectId = projects[0]?.id || null;
+let currentUser = null;
+let currentProfile = null;
+let currentRole = null;
+let projects = [];
+let activeProjectId = null;
+let mapsInitialized = false;
 
 let mainMap, dashboardMap;
 let mainBoundaryLayer, mainBoreholeLayer, dashBoundaryLayer, dashBoreholeLayer;
 
 const $ = (id) => document.getElementById(id);
 
-function loadProjects() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
-}
-function saveProjects() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-}
-function uid() {
-  return "p_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
-}
 function escapeHtml(value="") {
-  return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+  return String(value).replace(/[&<>"']/g, c => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+  }[c]));
 }
-function toast(message) {
+
+function toast(message, ms=3200) {
   $("toast").textContent = message;
   $("toast").classList.remove("hidden");
-  setTimeout(() => $("toast").classList.add("hidden"), 2800);
+  setTimeout(() => $("toast").classList.add("hidden"), ms);
 }
-function visibleProjects() {
-  if (currentRole === "admin") return projects;
-  const assignedCompany = localStorage.getItem("je_demo_company") || projects[0]?.company || "";
-  return projects.filter(p => p.company === assignedCompany);
+
+function setLoginMessage(message, isError=false) {
+  const el = $("loginMessage");
+  el.textContent = message || "";
+  el.classList.toggle("error", isError);
+}
+
+function showAuth() {
+  $("authScreen").classList.remove("hidden");
+  $("appShell").classList.add("app-hidden");
+}
+
+function showApp() {
+  $("authScreen").classList.add("hidden");
+  $("appShell").classList.remove("app-hidden");
+  if (!mapsInitialized) {
+    initMaps();
+    mapsInitialized = true;
+  }
+  setTimeout(() => {
+    mainMap?.invalidateSize();
+    dashboardMap?.invalidateSize();
+  }, 120);
 }
 
 function initMaps() {
@@ -47,14 +65,16 @@ function applyRole() {
   document.querySelectorAll(".admin-only").forEach(el => {
     el.classList.toggle("company-hidden", currentRole !== "admin");
   });
-  $("roleBadge").textContent = currentRole === "admin" ? "Yönetici" : "Firma";
-  renderAll();
+  const label = currentRole === "admin" ? "Yönetici" : "Firma";
+  $("roleBadge").textContent = label;
+  $("sidebarRoleBadge").textContent = label;
 }
 
 function switchView(view) {
+  if (view === "users" && currentRole !== "admin") return;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach(v => v.classList.remove("active"));
-  $(view + "View").classList.add("active");
+  $(view + "View")?.classList.add("active");
   document.querySelector(`.nav-item[data-view="${view}"]`)?.classList.add("active");
 
   const titles = {
@@ -63,11 +83,121 @@ function switchView(view) {
     map: ["Harita", "Çalışma alanlarını ve sondaj/ölçüm noktalarını yönetin."],
     users: ["Kullanıcılar", "Yönetici ve firma yetkilerini yönetin."]
   };
-  $("pageTitle").textContent = titles[view][0];
-  $("pageSubtitle").textContent = titles[view][1];
+  $("pageTitle").textContent = titles[view]?.[0] || "";
+  $("pageSubtitle").textContent = titles[view]?.[1] || "";
 
-  if (view === "map") setTimeout(() => mainMap.invalidateSize(), 100);
-  if (view === "dashboard") setTimeout(() => dashboardMap.invalidateSize(), 100);
+  if (view === "map") setTimeout(() => mainMap?.invalidateSize(), 100);
+  if (view === "dashboard") setTimeout(() => dashboardMap?.invalidateSize(), 100);
+}
+
+async function initializeAuth() {
+  if (!sb || !CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_PUBLISHABLE_KEY) {
+    setLoginMessage("Supabase bağlantı ayarları bulunamadı.", true);
+    return;
+  }
+
+  const { data, error } = await sb.auth.getSession();
+  if (error) {
+    setLoginMessage(error.message, true);
+    return;
+  }
+
+  if (data.session?.user) {
+    await enterSession(data.session.user);
+  } else {
+    showAuth();
+  }
+}
+
+async function enterSession(user) {
+  currentUser = user;
+
+  const { data: profile, error } = await sb
+    .from("profiles")
+    .select("id,full_name,role,company_id")
+    .eq("id", user.id)
+    .single();
+
+  if (error || !profile) {
+    await sb.auth.signOut();
+    showAuth();
+    setLoginMessage(
+      error?.code === "42501"
+        ? "Veritabanı erişim izni henüz açılmamış. SQL izin adımını uygulayın."
+        : "Bu kullanıcı için profil/yetki kaydı bulunamadı.",
+      true
+    );
+    return;
+  }
+
+  currentProfile = profile;
+  currentRole = profile.role;
+
+  $("signedUserName").textContent = profile.full_name || "Kullanıcı";
+  $("signedUserEmail").textContent = user.email || "";
+  applyRole();
+  showApp();
+
+  try {
+    await loadAppData();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Veriler yüklenemedi.", 5000);
+  }
+}
+
+async function loadAppData() {
+  const { data: projectRows, error: projectError } = await sb
+    .from("projects")
+    .select("id,short_name,area_ha,company_id,status,progress,created_at")
+    .order("created_at", { ascending: false });
+
+  if (projectError) throw projectError;
+
+  const companyIds = [...new Set((projectRows || []).map(p => p.company_id).filter(Boolean))];
+  let companyMap = {};
+
+  if (companyIds.length) {
+    const { data: companyRows, error: companyError } = await sb
+      .from("companies")
+      .select("id,name")
+      .in("id", companyIds);
+    if (companyError) throw companyError;
+    companyMap = Object.fromEntries((companyRows || []).map(c => [c.id, c.name]));
+  }
+
+  const projectIds = (projectRows || []).map(p => p.id);
+  let layers = [];
+  if (projectIds.length) {
+    const { data: layerRows, error: layerError } = await sb
+      .from("project_layers")
+      .select("id,project_id,layer_type,name,geojson")
+      .in("project_id", projectIds)
+      .order("created_at", { ascending: true });
+    if (layerError) throw layerError;
+    layers = layerRows || [];
+  }
+
+  projects = (projectRows || []).map(row => {
+    const boundary = layers.filter(l => l.project_id === row.id && l.layer_type === "boundary").at(-1)?.geojson || null;
+    const boreholes = layers.filter(l => l.project_id === row.id && l.layer_type === "boreholes").at(-1)?.geojson || null;
+    return {
+      id: row.id,
+      name: row.short_name,
+      area: Number(row.area_ha || 0),
+      companyId: row.company_id,
+      company: companyMap[row.company_id] || "Firma atanmadı",
+      status: row.status,
+      progress: Number(row.progress || 0),
+      boundary,
+      boreholes
+    };
+  });
+
+  if (!projects.some(p => p.id === activeProjectId)) {
+    activeProjectId = projects[0]?.id || null;
+  }
+  renderAll();
 }
 
 function renderAll() {
@@ -78,23 +208,20 @@ function renderAll() {
 }
 
 function renderStats() {
-  const list = visibleProjects();
-  $("statProjects").textContent = list.length;
-  $("statBoreholes").textContent = list.reduce((n,p) => n + (p.boreholes?.features?.length || 0), 0);
-  $("statArea").textContent = list.reduce((n,p) => n + Number(p.area || 0), 0).toLocaleString("tr-TR") + " ha";
-  $("statPending").textContent = list.filter(p => p.status === "Ofis Kontrolünde").length;
+  $("statProjects").textContent = projects.length;
+  $("statBoreholes").textContent = projects.reduce((n,p) => n + (p.boreholes?.features?.length || 0), 0);
+  $("statArea").textContent = projects.reduce((n,p) => n + Number(p.area || 0), 0).toLocaleString("tr-TR") + " ha";
+  $("statPending").textContent = projects.filter(p => p.status === "Ofis Kontrolünde").length;
 }
 
 function renderProjects() {
-  const list = visibleProjects();
-
-  if (!list.length) {
+  if (!projects.length) {
     $("dashboardProjects").innerHTML = '<div class="empty-state">Henüz görüntülenebilir iş yok.</div>';
     $("projectsTableBody").innerHTML = '<tr><td colspan="7" class="empty-state">Henüz iş oluşturulmadı.</td></tr>';
     return;
   }
 
-  $("dashboardProjects").innerHTML = list.slice(0,5).map(p => `
+  $("dashboardProjects").innerHTML = projects.slice(0,5).map(p => `
     <div class="project-row">
       <div>
         <strong>${escapeHtml(p.name)}</strong>
@@ -104,7 +231,7 @@ function renderProjects() {
     </div>
   `).join("");
 
-  $("projectsTableBody").innerHTML = list.map(p => {
+  $("projectsTableBody").innerHTML = projects.map(p => {
     const count = p.boreholes?.features?.length || 0;
     const progress = Number(p.progress || 0);
     return `
@@ -130,26 +257,26 @@ function renderProjects() {
 }
 
 function renderProjectSelect() {
-  const list = visibleProjects();
-  $("mapProjectSelect").innerHTML = list.length
-    ? list.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${Number(p.area).toLocaleString("tr-TR")} ha</option>`).join("")
+  $("mapProjectSelect").innerHTML = projects.length
+    ? projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)} — ${Number(p.area).toLocaleString("tr-TR")} ha</option>`).join("")
     : '<option value="">İş yok</option>';
 
-  if (!list.some(p => p.id === activeProjectId)) activeProjectId = list[0]?.id || null;
   if (activeProjectId) $("mapProjectSelect").value = activeProjectId;
 }
 
 function clearMapLayers(map, boundaryLayer, boreholeLayer) {
-  if (boundaryLayer) map.removeLayer(boundaryLayer);
-  if (boreholeLayer) map.removeLayer(boreholeLayer);
+  if (map && boundaryLayer) map.removeLayer(boundaryLayer);
+  if (map && boreholeLayer) map.removeLayer(boreholeLayer);
 }
 
 function renderMapProject() {
+  if (!mapsInitialized) return;
+
   clearMapLayers(mainMap, mainBoundaryLayer, mainBoreholeLayer);
   clearMapLayers(dashboardMap, dashBoundaryLayer, dashBoreholeLayer);
   mainBoundaryLayer = mainBoreholeLayer = dashBoundaryLayer = dashBoreholeLayer = null;
 
-  const p = visibleProjects().find(x => x.id === activeProjectId);
+  const p = projects.find(x => x.id === activeProjectId);
   if (!p) {
     $("mapProjectName").textContent = "İş seçilmedi";
     $("mapProjectMeta").textContent = "—";
@@ -164,15 +291,9 @@ function renderMapProject() {
   const bounds = [];
 
   if (p.boundary) {
-    mainBoundaryLayer = L.geoJSON(p.boundary, {
-      style: { weight: 3, fillOpacity: .08 }
-    }).addTo(mainMap);
-    dashBoundaryLayer = L.geoJSON(p.boundary, {
-      style: { weight: 2, fillOpacity: .06 }
-    }).addTo(dashboardMap);
-    try {
-      bounds.push(mainBoundaryLayer.getBounds());
-    } catch {}
+    mainBoundaryLayer = L.geoJSON(p.boundary, { style: { weight: 3, fillOpacity: .08 } }).addTo(mainMap);
+    dashBoundaryLayer = L.geoJSON(p.boundary, { style: { weight: 2, fillOpacity: .06 } }).addTo(dashboardMap);
+    try { bounds.push(mainBoundaryLayer.getBounds()); } catch {}
   }
 
   if (p.boreholes) {
@@ -182,17 +303,14 @@ function renderMapProject() {
       const name = props.name || props.Name || props.NAME || props.id || props.ID || "Sondaj";
       layer.bindPopup(`<strong>${escapeHtml(String(name))}</strong><br>${escapeHtml(p.name)}`);
     };
-
     mainBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer, onEachFeature }).addTo(mainMap);
     dashBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer }).addTo(dashboardMap);
-    try {
-      bounds.push(mainBoreholeLayer.getBounds());
-    } catch {}
+    try { bounds.push(mainBoreholeLayer.getBounds()); } catch {}
   }
 
-  const valid = bounds.filter(b => b && b.isValid && b.isValid());
+  const valid = bounds.filter(b => b?.isValid?.());
   if (valid.length) {
-    let merged = valid[0];
+    const merged = valid[0];
     valid.slice(1).forEach(b => merged.extend(b));
     mainMap.fitBounds(merged.pad(.12));
     dashboardMap.fitBounds(merged.pad(.15));
@@ -222,6 +340,58 @@ async function fileToGeoJSON(file) {
   return geojson;
 }
 
+async function replaceProjectLayer(projectId, layerType, fileName, geojson) {
+  const { error: deleteError } = await sb
+    .from("project_layers")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("layer_type", layerType);
+  if (deleteError) throw deleteError;
+
+  const { error: insertError } = await sb
+    .from("project_layers")
+    .insert({
+      project_id: projectId,
+      layer_type: layerType,
+      name: fileName,
+      geojson,
+      created_by: currentUser.id
+    });
+  if (insertError) throw insertError;
+}
+
+function boreholeCode(feature, index) {
+  const p = feature.properties || {};
+  return String(p.name || p.Name || p.NAME || p.id || p.ID || `SK-${index + 1}`).trim();
+}
+
+async function syncBoreholeRecords(projectId, geojson) {
+  const { error: deleteError } = await sb
+    .from("borehole_records")
+    .delete()
+    .eq("project_id", projectId);
+  if (deleteError) throw deleteError;
+
+  const rows = [];
+  geojson.features.forEach((feature, index) => {
+    if (feature.geometry?.type !== "Point") return;
+    const [longitude, latitude] = feature.geometry.coordinates || [];
+    rows.push({
+      project_id: projectId,
+      borehole_code: boreholeCode(feature, index),
+      longitude,
+      latitude,
+      status: "Planlandı",
+      created_by: currentUser.id
+    });
+  });
+
+  if (rows.length) {
+    const { error } = await sb.from("borehole_records").insert(rows);
+    if (error) throw error;
+  }
+}
+
 async function importLayer(kind) {
   if (currentRole !== "admin") return toast("Bu işlem yalnızca Yönetici rolüne açık.");
   const p = projects.find(x => x.id === activeProjectId);
@@ -231,28 +401,89 @@ async function importLayer(kind) {
   const file = input.files[0];
 
   try {
-    const geojson = await fileToGeoJSON(file);
+    const raw = await fileToGeoJSON(file);
 
     if (kind === "boundary") {
-      const polygonFeatures = geojson.features.filter(f =>
-        ["Polygon","MultiPolygon"].includes(f.geometry?.type)
-      );
-      if (!polygonFeatures.length) throw new Error("Çalışma alanı için Polygon/MultiPolygon bulunamadı.");
-      p.boundary = { type:"FeatureCollection", features:polygonFeatures };
-      toast("Çalışma alanı içe aktarıldı.");
+      const features = raw.features.filter(f => ["Polygon","MultiPolygon"].includes(f.geometry?.type));
+      if (!features.length) throw new Error("Çalışma alanı için Polygon/MultiPolygon bulunamadı.");
+      const geojson = { type:"FeatureCollection", features };
+      await replaceProjectLayer(p.id, "boundary", file.name, geojson);
+      toast("Çalışma alanı merkezi veritabanına kaydedildi.");
     } else {
-      const pointFeatures = geojson.features.filter(f =>
-        ["Point","MultiPoint"].includes(f.geometry?.type)
-      );
-      if (!pointFeatures.length) throw new Error("Sondaj için Point/MultiPoint bulunamadı.");
-      p.boreholes = { type:"FeatureCollection", features:pointFeatures };
-      toast(`${pointFeatures.length} sondaj noktası içe aktarıldı.`);
+      const features = raw.features.filter(f => ["Point","MultiPoint"].includes(f.geometry?.type));
+      if (!features.length) throw new Error("Sondaj için Point/MultiPoint bulunamadı.");
+      const geojson = { type:"FeatureCollection", features };
+      await replaceProjectLayer(p.id, "boreholes", file.name, geojson);
+      await syncBoreholeRecords(p.id, geojson);
+      toast(`${features.length} sondaj noktası merkezi veritabanına kaydedildi.`);
     }
 
-    saveProjects();
-    renderAll();
+    input.value = "";
+    await loadAppData();
   } catch (err) {
-    toast(err.message || "Dosya içe aktarılamadı.");
+    console.error(err);
+    toast(err.message || "Dosya içe aktarılamadı.", 5000);
+  }
+}
+
+async function getOrCreateCompany(name) {
+  const cleanName = name.trim();
+
+  const { data: existing, error: selectError } = await sb
+    .from("companies")
+    .select("id,name")
+    .eq("name", cleanName)
+    .maybeSingle();
+
+  if (selectError) throw selectError;
+  if (existing) return existing;
+
+  const { data: created, error: insertError } = await sb
+    .from("companies")
+    .insert({ name: cleanName })
+    .select("id,name")
+    .single();
+
+  if (insertError) throw insertError;
+  return created;
+}
+
+async function createProject(event) {
+  event.preventDefault();
+  if (currentRole !== "admin") return;
+
+  const saveBtn = event.submitter;
+  if (saveBtn) saveBtn.disabled = true;
+
+  try {
+    const company = await getOrCreateCompany($("projectCompany").value);
+    const payload = {
+      short_name: $("projectName").value.trim(),
+      area_ha: Number($("projectArea").value),
+      company_id: company.id,
+      status: $("projectStatus").value,
+      progress: 0,
+      created_by: currentUser.id
+    };
+
+    const { data, error } = await sb
+      .from("projects")
+      .insert(payload)
+      .select("id")
+      .single();
+
+    if (error) throw error;
+
+    activeProjectId = data.id;
+    closeModal();
+    await loadAppData();
+    switchView("map");
+    toast("Yeni iş merkezi veritabanına kaydedildi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "İş kaydedilemedi.", 5000);
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -261,6 +492,7 @@ function openModal() {
   $("projectModal").classList.remove("hidden");
   $("projectName").focus();
 }
+
 function closeModal() {
   $("projectModal").classList.add("hidden");
   $("projectForm").reset();
@@ -268,19 +500,35 @@ function closeModal() {
 
 function wireEvents() {
   document.querySelectorAll(".nav-item").forEach(btn => {
-    btn.addEventListener("click", () => {
-      if (btn.dataset.view === "users" && currentRole !== "admin") return;
-      switchView(btn.dataset.view);
-    });
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
-  $("roleSelect").addEventListener("change", e => {
-    currentRole = e.target.value;
-    if (currentRole === "company") {
-      const firstCompany = projects[0]?.company || "";
-      localStorage.setItem("je_demo_company", firstCompany);
+  $("loginForm").addEventListener("submit", async e => {
+    e.preventDefault();
+    setLoginMessage("");
+    $("loginBtn").disabled = true;
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: $("loginEmail").value.trim(),
+        password: $("loginPassword").value
+      });
+      if (error) throw error;
+      await enterSession(data.user);
+      $("loginForm").reset();
+    } catch (err) {
+      setLoginMessage(err.message || "Giriş yapılamadı.", true);
+    } finally {
+      $("loginBtn").disabled = false;
     }
-    applyRole();
+  });
+
+  $("logoutBtn").addEventListener("click", async () => {
+    await sb.auth.signOut();
+    currentUser = currentProfile = null;
+    currentRole = null;
+    projects = [];
+    activeProjectId = null;
+    showAuth();
   });
 
   $("newProjectBtn").onclick = openModal;
@@ -293,27 +541,7 @@ function wireEvents() {
     if (e.target.id === "projectModal") closeModal();
   });
 
-  $("projectForm").addEventListener("submit", e => {
-    e.preventDefault();
-    const project = {
-      id: uid(),
-      name: $("projectName").value.trim(),
-      area: Number($("projectArea").value),
-      company: $("projectCompany").value.trim(),
-      status: $("projectStatus").value,
-      progress: 0,
-      boundary: null,
-      boreholes: null,
-      createdAt: new Date().toISOString()
-    };
-    projects.unshift(project);
-    activeProjectId = project.id;
-    saveProjects();
-    closeModal();
-    renderAll();
-    switchView("map");
-    toast("Yeni iş oluşturuldu.");
-  });
+  $("projectForm").addEventListener("submit", createProject);
 
   $("mapProjectSelect").addEventListener("change", e => {
     activeProjectId = e.target.value || null;
@@ -325,8 +553,7 @@ function wireEvents() {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  initMaps();
   wireEvents();
-  applyRole();
-  renderAll();
+  showAuth();
+  initializeAuth();
 });
