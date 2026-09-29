@@ -41,7 +41,7 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="dashboard">▣ <span>Çalışmalar</span></button>
+        <button class="nav-item active" data-view="dashboard">▣ <span>İşler</span></button>
         <button class="nav-item admin-only" data-view="users">⚙ <span>Yönetim</span></button>
       </nav>
 
@@ -58,21 +58,14 @@
     <main class="main">
       <header class="topbar">
         <div>
-          <h1 id="pageTitle">Kontrol Paneli</h1>
-          <p id="pageSubtitle">Tüm işleri, saha durumunu ve ilerlemeyi tek ekrandan izleyin.</p>
+          <h1 id="pageTitle">İşler</h1>
+          <p id="pageSubtitle">Bir işi seçerek durum, harita ve saha noktalarına geçin.</p>
         </div>
         <div class="topbar-actions">
           <span class="role-badge" id="roleBadge">—</span>
           <button id="newProjectBtn" class="btn primary admin-only">+ Yeni İş</button>
         </div>
       </header>
-
-      <div id="workspaceTabs" class="workspace-tabs">
-        <button class="workspace-tab active" data-workspace-view="dashboard" type="button">Genel</button>
-        <button class="workspace-tab" data-workspace-view="projects" type="button">İşler</button>
-        <button class="workspace-tab" data-workspace-view="map" type="button">Harita</button>
-        <button class="workspace-tab" data-workspace-view="boreholes" type="button">Saha Noktaları</button>
-      </div>
 
       <section id="dashboardView" class="view active">
         <div class="stats-grid">
@@ -85,8 +78,11 @@
         <div class="dashboard-grid">
           <section class="panel">
             <div class="panel-head">
-              <div><h2>İşler</h2><p>Kısa iş adı, alan ve firma bazında takip.</p></div>
-              <button class="btn ghost" id="goProjectsBtn">Tümünü Aç</button>
+              <div><h2>İşler</h2><p>Bir işe tıklayın; iş durumu, harita ve saha noktaları aynı ekranda açılsın.</p></div>
+              <div class="panel-actions admin-only">
+                <button class="btn ghost" id="dashboardExcelImportBtn" type="button">Excel'den Aktar</button>
+                <button class="btn ghost" id="dashboardExcelExportBtn" type="button">Excel'e Aktar</button>
+              </div>
             </div>
             <div id="dashboardProjects" class="project-list empty-state">Henüz iş oluşturulmadı.</div>
           </section>
@@ -165,15 +161,20 @@
 
       <section id="boreholesView" class="view">
         <section class="panel">
-          <div class="panel-head">
-            <div>
-              <h2>Sondaj ve Jeoteknik Noktaları</h2>
-              <p>Sahadaki sondaj ve jeoteknik noktalarını konumlarıyla birlikte yönetin.</p>
+          <div class="project-detail-head">
+            <button id="backToJobsBtn" class="btn ghost" type="button">← İşlere Dön</button>
+            <div class="project-detail-title">
+              <h2 id="projectDetailTitle">İş</h2>
+              <p id="projectDetailMeta">—</p>
             </div>
-            <div class="borehole-project-picker">
-              <label class="field-label">İş</label>
-              <select id="boreholeProjectSelect" class="input"></select>
-            </div>
+            <button id="editCurrentProjectBtn" class="btn secondary admin-only" type="button">İşi Düzenle</button>
+          </div>
+
+          <div class="project-summary-grid">
+            <article><span>Durum</span><strong id="projectDetailStatus">—</strong></article>
+            <article><span>Alan</span><strong id="projectDetailArea">—</strong></article>
+            <article><span>Firma</span><strong id="projectDetailCompany">—</strong></article>
+            <article><span>İlerleme</span><strong id="projectDetailProgress">%0</strong></article>
           </div>
 
           <div class="field-toolbar">
@@ -212,6 +213,30 @@
             </div>
             <div class="progress borehole-progress"><span id="bhProgressBar" style="width:0%"></span></div>
           </div>
+
+          <details class="project-data-details admin-only">
+            <summary>Harita Verileri / KML-KMZ</summary>
+            <div class="project-data-grid">
+              <div class="upload-group">
+                <label class="field-label">Çalışma alanı KML/KMZ</label>
+                <input id="detailBoundaryFile" type="file" accept=".kml,.kmz" class="file-input" />
+                <button id="detailImportBoundaryBtn" class="btn secondary full" type="button">Yükle / Değiştir</button>
+                <div class="layer-current">
+                  <span id="detailBoundaryLayerInfo">Yüklü çalışma alanı yok</span>
+                  <button id="detailDeleteBoundaryBtn" class="btn danger mini" type="button">Sil</button>
+                </div>
+              </div>
+              <div class="upload-group">
+                <label class="field-label">Sondaj noktaları KML/KMZ</label>
+                <input id="detailBoreholeFile" type="file" accept=".kml,.kmz" class="file-input" />
+                <button id="detailImportBoreholesBtn" class="btn secondary full" type="button">Yükle / Değiştir</button>
+                <div class="layer-current">
+                  <span id="detailBoreholeLayerInfo">Yüklü sondaj KML/KMZ yok</span>
+                  <button id="detailDeleteBoreholesBtn" class="btn danger mini" type="button">Sil</button>
+                </div>
+              </div>
+            </div>
+          </details>
 
           <div id="boreholeMap" class="map borehole-map"></div>
 
