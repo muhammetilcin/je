@@ -183,12 +183,12 @@
 
       <form id="loginForm">
 
-        <label class="field-label">E-posta</label>
+        <label class="field-label">Kullanıcı adı veya e-posta</label>
 
         <input
           id="loginEmail"
           class="input"
-          type="email"
+          type="text"
           autocomplete="username"
           required
         />
@@ -375,6 +375,14 @@
             type="button"
           >
             İş Takibi
+          </button>
+
+          <button
+            class="dashboard-switch-btn"
+            data-dashboard-panel="daily"
+            type="button"
+          >
+            Gün Sonu
           </button>
 
         </div>
@@ -600,6 +608,89 @@
                 İşler yükleniyor...
               </div>
             </div>
+
+          </section>
+
+        </div>
+
+        <!-- ===================================================
+             4 - GÜN SONU RAPORU
+             =================================================== -->
+
+        <div
+          id="dashboardDailyPanel"
+          class="dashboard-panel hidden"
+        >
+
+          <section class="panel">
+
+            <div class="panel-head">
+
+              <div>
+                <h2>Gün Sonu Bilgi Notu</h2>
+                <p>
+                  Seçilen tarihte yapılan saha ve ofis işlemlerini
+                  sistem kayıtlarından otomatik oluşturun.
+                </p>
+              </div>
+
+            </div>
+
+            <div class="daily-report-toolbar">
+
+              <div>
+                <label class="field-label">Tarih</label>
+                <input
+                  id="dailyReportDate"
+                  class="input"
+                  type="date"
+                />
+              </div>
+
+              <div>
+                <label class="field-label">Kapsam</label>
+                <select
+                  id="dailyReportProjectSelect"
+                  class="input"
+                >
+                  <option value="">Tüm İşler</option>
+                </select>
+              </div>
+
+              <div class="daily-report-actions">
+                <button
+                  id="generateDailyReportBtn"
+                  class="btn primary"
+                  type="button"
+                >
+                  Raporu Oluştur
+                </button>
+
+                <button
+                  id="copyDailyReportBtn"
+                  class="btn secondary"
+                  type="button"
+                >
+                  Kopyala
+                </button>
+
+                <button
+                  id="printDailyReportBtn"
+                  class="btn ghost"
+                  type="button"
+                >
+                  Yazdır / PDF
+                </button>
+              </div>
+
+            </div>
+
+            <textarea
+              id="dailyReportText"
+              class="input daily-report-text"
+              rows="22"
+              placeholder="Gün sonu bilgi notu burada oluşacak..."
+            ></textarea>
 
           </section>
 
@@ -1273,54 +1364,114 @@
         <section class="panel">
 
           <div class="panel-head">
-
             <div>
-
-              <h2>Yönetim</h2>
-
+              <h2>Kullanıcı ve Firma Yönetimi</h2>
               <p>
-                Kullanıcı, firma ve yetki ayarlarını
-                buradan yönetin.
+                Yönetici olarak kurum personeli ve firma hesapları oluşturun.
               </p>
-
             </div>
-
           </div>
 
+          <div class="management-grid">
 
-          <div class="role-cards">
+            <section class="subpanel">
 
-            <article class="role-card">
+              <div class="subpanel-head">
+                <div>
+                  <h3>Yeni Hesap Oluştur</h3>
+                  <p>
+                    Kullanıcı adı ve parola ile giriş yapacak yeni bir hesap tanımlayın.
+                  </p>
+                </div>
+              </div>
 
-              <h3>Yönetici</h3>
+              <form id="managedUserForm" class="form-grid">
 
-              <p>
-                Tüm işlerde görüntüleme,
-                veri girişi, KML/KMZ yükleme
-                ve kontrol yetkisine sahiptir.
-              </p>
+                <label class="field-label">Hesap türü</label>
+                <select id="managedUserRole" class="input">
+                  <option value="admin">Kurum Kullanıcısı / Yönetici</option>
+                  <option value="company">Firma Kullanıcısı</option>
+                </select>
 
-            </article>
+                <label class="field-label">Ad Soyad / Yetkili Adı</label>
+                <input
+                  id="managedUserFullName"
+                  class="input"
+                  required
+                  maxlength="100"
+                  placeholder="Örn. Ahmet Yılmaz"
+                />
 
+                <div id="managedCompanyGroup" class="hidden">
+                  <label class="field-label">Firma Adı</label>
+                  <input
+                    id="managedCompanyName"
+                    class="input"
+                    maxlength="120"
+                    placeholder="Örn. ABC Jeoteknik"
+                  />
+                </div>
 
-            <article class="role-card">
+                <label class="field-label">Kullanıcı adı</label>
+                <input
+                  id="managedUsername"
+                  class="input"
+                  required
+                  minlength="3"
+                  maxlength="40"
+                  autocomplete="off"
+                  placeholder="Örn. ahmet.yilmaz"
+                />
 
-              <h3>Firma</h3>
+                <label class="field-label">Parola</label>
+                <input
+                  id="managedPassword"
+                  class="input"
+                  type="password"
+                  required
+                  minlength="8"
+                  autocomplete="new-password"
+                  placeholder="En az 8 karakter"
+                />
 
-              <p>
-                Yalnızca kendisine atanmış
-                işleri görebilir ve izin verilen
-                saha verilerini girebilir.
-              </p>
+                <small class="muted">
+                  Parola yalnızca hesap oluşturma sırasında kullanılır; ekranda veya veritabanında düz metin olarak saklanmaz.
+                </small>
 
-            </article>
+                <button
+                  id="createManagedUserBtn"
+                  class="btn primary"
+                  type="submit"
+                >
+                  Hesabı Oluştur
+                </button>
+
+              </form>
+
+            </section>
+
+            <section class="subpanel">
+
+              <div class="subpanel-head">
+                <div>
+                  <h3>Tanımlı Kullanıcılar</h3>
+                  <p>
+                    Kurum ve firma hesaplarının güncel listesi.
+                  </p>
+                </div>
+              </div>
+
+              <div id="managedUsersList" class="managed-users-list">
+                <div class="empty-state">Kullanıcılar yükleniyor...</div>
+              </div>
+
+            </section>
 
           </div>
 
         </section>
 
       </section>
-
     </main>
 
   </div>
