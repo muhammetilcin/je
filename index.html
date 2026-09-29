@@ -41,11 +41,8 @@
       </div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="dashboard">◫ <span>Kontrol Paneli</span></button>
-        <button class="nav-item" data-view="projects">▣ <span>İşler</span></button>
-        <button class="nav-item" data-view="map">⌖ <span>Harita</span></button>
-        <button class="nav-item" data-view="boreholes">● <span>Saha Noktaları</span></button>
-        <button class="nav-item admin-only" data-view="users">👥 <span>Kullanıcılar</span></button>
+        <button class="nav-item active" data-view="dashboard">▣ <span>Çalışmalar</span></button>
+        <button class="nav-item admin-only" data-view="users">⚙ <span>Yönetim</span></button>
       </nav>
 
       <div class="sidebar-bottom">
@@ -69,6 +66,13 @@
           <button id="newProjectBtn" class="btn primary admin-only">+ Yeni İş</button>
         </div>
       </header>
+
+      <div id="workspaceTabs" class="workspace-tabs">
+        <button class="workspace-tab active" data-workspace-view="dashboard" type="button">Genel</button>
+        <button class="workspace-tab" data-workspace-view="projects" type="button">İşler</button>
+        <button class="workspace-tab" data-workspace-view="map" type="button">Harita</button>
+        <button class="workspace-tab" data-workspace-view="boreholes" type="button">Saha Noktaları</button>
+      </div>
 
       <section id="dashboardView" class="view active">
         <div class="stats-grid">
@@ -234,8 +238,8 @@
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>Kullanıcılar ve Yetkiler</h2>
-              <p>Yönetici tüm işleri görür. Firma hesabı sadece kendisine atanmış işlere erişir.</p>
+              <h2>Yönetim</h2>
+              <p>Kullanıcı, firma ve yetki ayarlarını buradan yönetin.</p>
             </div>
           </div>
           <div class="role-cards">
