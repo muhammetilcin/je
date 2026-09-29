@@ -203,6 +203,23 @@ function boreholeStatusClass(status = "") {
 // GİRİŞ
 // ============================================================
 
+function loginIdentifierToEmail(value = "") {
+  const clean = String(value).trim().toLocaleLowerCase("tr-TR");
+  if (clean.includes("@")) return clean;
+
+  const username = clean
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9._-]/g, "");
+
+  return `${username}@jeo.local`;
+}
+
+
 function showAuth() {
 
   $("authScreen")?.classList.remove("hidden");
@@ -1037,6 +1054,8 @@ function renderAll() {
   renderDashboardMap();
 
   renderTrackingChart();
+
+  renderDailyReportProjectSelect();
 }
 
 
@@ -1689,6 +1708,22 @@ function switchDashboardPanel(panel) {
     renderTrackingChart();
 
   }
+
+
+  if (panel === "daily") {
+
+    $("dashboardDailyPanel")
+      ?.classList
+      .remove("hidden");
+
+
+    renderDailyReportProjectSelect();
+
+    if ($("dailyReportDate") && !$("dailyReportDate").value) {
+      $("dailyReportDate").value = localDateInputValue(new Date());
+    }
+
+  }
 }
 
 
@@ -2260,6 +2295,13 @@ function switchView(view) {
           ?.invalidateSize(),
       150
     );
+
+  }
+
+
+  if (view === "users") {
+
+    loadManagedUsers();
 
   }
 
@@ -6774,6 +6816,402 @@ function toggleMapSidebar() {
 
 
 // ============================================================
+// GÜN SONU BİLGİ NOTU
+// ============================================================
+
+function localDateInputValue(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+
+function reportDateRange(dateValue) {
+  const start = new Date(`${dateValue}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return {
+    start: start.toISOString(),
+    end: end.toISOString()
+  };
+}
+
+
+function renderDailyReportProjectSelect() {
+  const select = $("dailyReportProjectSelect");
+  if (!select) return;
+
+  const selected = select.value;
+
+  select.innerHTML =
+    '<option value="">Tüm İşler</option>' +
+    projects.map(p =>
+      `<option value="${p.id}">${escapeHtml(p.name)}</option>`
+    ).join("");
+
+  if (selected && projects.some(p => p.id === selected)) {
+    select.value = selected;
+  }
+}
+
+
+async function generateDailyReport() {
+  const dateValue = $("dailyReportDate")?.value || localDateInputValue(new Date());
+  const projectFilter = $("dailyReportProjectSelect")?.value || "";
+  const output = $("dailyReportText");
+  if (!output) return;
+
+  output.value = "Gün sonu kayıtları hazırlanıyor...";
+
+  try {
+    const { start, end } = reportDateRange(dateValue);
+
+    let createdQuery = sb
+      .from("borehole_records")
+      .select("id,project_id,borehole_code,point_type,method,status,planned_depth_m,actual_depth_m,created_at,updated_at")
+      .gte("created_at", start)
+      .lt("created_at", end);
+
+    if (projectFilter) createdQuery = createdQuery.eq("project_id", projectFilter);
+    let createdResult = await createdQuery;
+
+    if (createdResult.error) {
+      createdQuery = sb
+        .from("borehole_records")
+        .select("id,project_id,borehole_code,point_type,method,status,planned_depth_m,actual_depth_m,created_at")
+        .gte("created_at", start)
+        .lt("created_at", end);
+      if (projectFilter) createdQuery = createdQuery.eq("project_id", projectFilter);
+      createdResult = await createdQuery;
+    }
+
+    if (createdResult.error) throw createdResult.error;
+
+    let updatedResult = { data: [], error: null };
+    let updatedQuery = sb
+      .from("borehole_records")
+      .select("id,project_id,borehole_code,point_type,method,status,planned_depth_m,actual_depth_m,created_at,updated_at")
+      .gte("updated_at", start)
+      .lt("updated_at", end);
+
+    if (projectFilter) updatedQuery = updatedQuery.eq("project_id", projectFilter);
+    updatedResult = await updatedQuery;
+    if (updatedResult.error) updatedResult = { data: [], error: null };
+
+    let entryQuery = sb
+      .from("field_entries")
+      .select("id,borehole_id,entry_type,depth_from_m,depth_to_m,value_text,notes,created_at")
+      .gte("created_at", start)
+      .lt("created_at", end);
+
+    const entryResult = await entryQuery;
+    if (entryResult.error) throw entryResult.error;
+
+    let attachmentQuery = sb
+      .from("attachments")
+      .select("id,project_id,borehole_id,file_name,created_at")
+      .gte("created_at", start)
+      .lt("created_at", end);
+
+    if (projectFilter) attachmentQuery = attachmentQuery.eq("project_id", projectFilter);
+    const attachmentResult = await attachmentQuery;
+    if (attachmentResult.error) throw attachmentResult.error;
+
+    const pointMap = new Map(boreholeRecords.map(x => [x.id, x]));
+    const touchedMap = new Map();
+
+    [...(createdResult.data || []), ...(updatedResult.data || [])].forEach(row => {
+      touchedMap.set(row.id, row);
+    });
+
+    const entries = (entryResult.data || []).filter(entry => {
+      const point = pointMap.get(entry.borehole_id);
+      return point && (!projectFilter || point.project_id === projectFilter);
+    });
+
+    const attachments = attachmentResult.data || [];
+
+    entries.forEach(entry => {
+      const point = pointMap.get(entry.borehole_id);
+      if (point) touchedMap.set(point.id, point);
+    });
+
+    attachments.forEach(file => {
+      const point = pointMap.get(file.borehole_id);
+      if (point) touchedMap.set(point.id, point);
+    });
+
+    const touched = [...touchedMap.values()];
+    const touchedProjectIds = new Set([
+      ...touched.map(x => x.project_id),
+      ...attachments.map(x => x.project_id)
+    ]);
+
+    const scopeProjects = projects.filter(p =>
+      projectFilter ? p.id === projectFilter : touchedProjectIds.has(p.id)
+    );
+
+    const dateLabel = new Date(`${dateValue}T12:00:00`).toLocaleDateString("tr-TR");
+    const lines = [
+      "GÜN SONU SAHA ÇALIŞMALARI BİLGİ NOTU",
+      `Tarih: ${dateLabel}`,
+      ""
+    ];
+
+    if (!scopeProjects.length && !entries.length && !attachments.length) {
+      lines.push("Seçilen tarihte sistemde kayıtlı bir saha/ofis işlemi bulunmamaktadır.");
+      output.value = lines.join("\n");
+      return;
+    }
+
+    for (const p of scopeProjects) {
+      const allProjectPoints = boreholeRecords.filter(x => x.project_id === p.id);
+      const changedPoints = touched.filter(x => x.project_id === p.id);
+      const createdPoints = (createdResult.data || []).filter(x => x.project_id === p.id);
+      const projectEntries = entries.filter(e => pointMap.get(e.borehole_id)?.project_id === p.id);
+      const projectFiles = attachments.filter(a => a.project_id === p.id);
+
+      const planned = changedPoints.filter(x => getStatusKey(x.status) === "planned").length;
+      const active = changedPoints.filter(x => getStatusKey(x.status) === "active").length;
+      const review = changedPoints.filter(x => getStatusKey(x.status) === "review").length;
+      const done = changedPoints.filter(x => getStatusKey(x.status) === "done").length;
+
+      const completedDrills = changedPoints.filter(x =>
+        (x.point_type || "Sondaj") === "Sondaj" &&
+        getStatusKey(x.status) === "done"
+      );
+
+      const geoPoints = changedPoints.filter(x => x.point_type === "Jeoteknik");
+      const progress = getProjectProgress(p.id).percent;
+
+      lines.push(p.name.toLocaleUpperCase("tr-TR"));
+      lines.push(`Firma: ${p.company} · Alan: ${Number(p.area).toLocaleString("tr-TR")} ha · Güncel ilerleme: %${progress}`);
+
+      const summaryParts = [];
+      if (createdPoints.length) summaryParts.push(`${createdPoints.length} yeni saha noktası eklendi`);
+      if (active) summaryParts.push(`${active} nokta sahada`);
+      if (review) summaryParts.push(`${review} nokta kontrol bekliyor`);
+      if (done) summaryParts.push(`${done} nokta tamamlandı`);
+      if (planned) summaryParts.push(`${planned} nokta planlandı`);
+
+      lines.push(
+        summaryParts.length
+          ? summaryParts.join(", ") + "."
+          : "Saha noktalarında kayıt işlemleri gerçekleştirildi."
+      );
+
+      if (completedDrills.length) {
+        const depths = completedDrills.map(x =>
+          `${x.borehole_code}${x.actual_depth_m != null ? ` (${x.actual_depth_m} m)` : ""}`
+        );
+        lines.push("Tamamlanan sondajlar: " + depths.join(", ") + ".");
+      }
+
+      if (geoPoints.length) {
+        const geos = geoPoints.map(x =>
+          `${x.borehole_code}${x.method ? ` - ${x.method}` : ""} (${x.status || "Planlandı"})`
+        );
+        lines.push("Jeoteknik çalışmalar: " + geos.join(", ") + ".");
+      }
+
+      if (projectEntries.length) {
+        const counts = {};
+        projectEntries.forEach(e => {
+          counts[e.entry_type || "Saha Kaydı"] = (counts[e.entry_type || "Saha Kaydı"] || 0) + 1;
+        });
+        lines.push(
+          "Saha kayıtları: " +
+          Object.entries(counts).map(([k,v]) => `${v} ${k}`).join(", ") +
+          "."
+        );
+      }
+
+      if (projectFiles.length) {
+        lines.push(`${projectFiles.length} adet fotoğraf/belge sisteme yüklendi.`);
+      }
+
+      lines.push(`Toplam saha noktası: ${allProjectPoints.length}.`);
+      lines.push("");
+    }
+
+    const totalNew = (createdResult.data || []).length;
+    const totalChanged = touched.length;
+    const totalFiles = attachments.length;
+    const totalEntries = entries.length;
+
+    lines.push("GÜNLÜK GENEL ÖZET");
+    lines.push(`İşlem yapılan iş: ${scopeProjects.length}`);
+    lines.push(`İşlem gören saha noktası: ${totalChanged}`);
+    lines.push(`Yeni eklenen saha noktası: ${totalNew}`);
+    lines.push(`Eklenen saha kaydı: ${totalEntries}`);
+    lines.push(`Yüklenen fotoğraf/belge: ${totalFiles}`);
+
+    output.value = lines.join("\n");
+
+  } catch (err) {
+    console.error(err);
+    output.value = "";
+    toast(err.message || "Gün sonu raporu oluşturulamadı.", 6000);
+  }
+}
+
+
+async function copyDailyReport() {
+  const textValue = $("dailyReportText")?.value || "";
+  if (!textValue.trim()) return toast("Önce raporu oluşturun.");
+
+  try {
+    await navigator.clipboard.writeText(textValue);
+    toast("Bilgi notu panoya kopyalandı.");
+  } catch {
+    $("dailyReportText")?.select();
+    document.execCommand("copy");
+    toast("Bilgi notu kopyalandı.");
+  }
+}
+
+
+function printDailyReport() {
+  const textValue = $("dailyReportText")?.value || "";
+  if (!textValue.trim()) return toast("Önce raporu oluşturun.");
+
+  const win = window.open("", "_blank");
+  if (!win) return toast("Yazdırma penceresi açılamadı.");
+
+  win.document.write(`
+    <!doctype html>
+    <html lang="tr">
+      <head>
+        <meta charset="utf-8">
+        <title>Gün Sonu Bilgi Notu</title>
+        <style>
+          body{font-family:Arial,sans-serif;margin:38px;line-height:1.55;color:#111}
+          pre{font:inherit;white-space:pre-wrap}
+        </style>
+      </head>
+      <body><pre>${escapeHtml(textValue)}</pre></body>
+    </html>
+  `);
+  win.document.close();
+  win.focus();
+  win.print();
+}
+
+
+// ============================================================
+// YÖNETİCİ - KULLANICI / FİRMA HESAPLARI
+// ============================================================
+
+function updateManagedUserRoleUI() {
+  const isCompany = $("managedUserRole")?.value === "company";
+  $("managedCompanyGroup")?.classList.toggle("hidden", !isCompany);
+  if ($("managedCompanyName")) $("managedCompanyName").required = isCompany;
+}
+
+
+async function loadManagedUsers() {
+  const list = $("managedUsersList");
+  if (!list || currentRole !== "admin") return;
+
+  list.innerHTML = '<div class="empty-state">Kullanıcılar yükleniyor...</div>';
+
+  try {
+    const { data, error } = await sb
+      .from("profiles")
+      .select("id,full_name,role,company_id,username")
+      .order("full_name", { ascending: true });
+
+    if (error) throw error;
+
+    const companyIds = [...new Set((data || []).map(x => x.company_id).filter(Boolean))];
+    let companyMap = {};
+
+    if (companyIds.length) {
+      const result = await sb.from("companies").select("id,name").in("id", companyIds);
+      if (!result.error) {
+        companyMap = Object.fromEntries((result.data || []).map(c => [c.id, c.name]));
+      }
+    }
+
+    if (!data?.length) {
+      list.innerHTML = '<div class="empty-state">Tanımlı kullanıcı bulunamadı.</div>';
+      return;
+    }
+
+    list.innerHTML = data.map(user => `
+      <article class="managed-user-card">
+        <div>
+          <strong>${escapeHtml(user.full_name || "Kullanıcı")}</strong>
+          <small>@${escapeHtml(user.username || "—")}</small>
+        </div>
+        <div class="managed-user-meta">
+          <span>${user.role === "admin" ? "Yönetici" : "Firma"}</span>
+          ${user.company_id ? `<span>${escapeHtml(companyMap[user.company_id] || "Firma")}</span>` : ""}
+        </div>
+      </article>
+    `).join("");
+
+  } catch (err) {
+    console.error(err);
+    list.innerHTML =
+      '<div class="empty-state">Kullanıcı listesi yüklenemedi. Supabase kullanıcı yönetimi SQL güncellemesini çalıştırın.</div>';
+  }
+}
+
+
+async function createManagedUser(event) {
+  event.preventDefault();
+  if (currentRole !== "admin") return;
+
+  const role = $("managedUserRole").value;
+  const fullName = $("managedUserFullName").value.trim();
+  const username = $("managedUsername").value.trim().toLocaleLowerCase("tr-TR");
+  const password = $("managedPassword").value;
+  const companyName = role === "company" ? $("managedCompanyName").value.trim() : null;
+
+  if (role === "company" && !companyName) {
+    return toast("Firma adı girin.");
+  }
+
+  const btn = $("createManagedUserBtn");
+  if (btn) btn.disabled = true;
+
+  try {
+    const { data, error } = await sb.functions.invoke("admin-create-user", {
+      body: {
+        username,
+        password,
+        full_name: fullName,
+        role,
+        company_name: companyName
+      }
+    });
+
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+
+    $("managedUserForm").reset();
+    $("managedUserRole").value = "admin";
+    updateManagedUserRoleUI();
+
+    toast(`@${data?.username || username} hesabı oluşturuldu.`);
+    await loadManagedUsers();
+
+  } catch (err) {
+    console.error(err);
+    toast(
+      err.message ||
+      "Hesap oluşturulamadı. Edge Function kurulumunu kontrol edin.",
+      7000
+    );
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+
+// ============================================================
 // EVENTS
 // ============================================================
 
@@ -6821,6 +7259,39 @@ function wireEvents() {
     );
 
 
+  // GÜN SONU RAPORU
+
+  if ($("dailyReportDate") && !$("dailyReportDate").value) {
+    $("dailyReportDate").value = localDateInputValue(new Date());
+  }
+
+  if ($("generateDailyReportBtn")) {
+    $("generateDailyReportBtn").onclick = generateDailyReport;
+  }
+
+  if ($("copyDailyReportBtn")) {
+    $("copyDailyReportBtn").onclick = copyDailyReport;
+  }
+
+  if ($("printDailyReportBtn")) {
+    $("printDailyReportBtn").onclick = printDailyReport;
+  }
+
+
+  // KULLANICI / FİRMA YÖNETİMİ
+
+  if ($("managedUserRole")) {
+    $("managedUserRole").addEventListener("change", updateManagedUserRoleUI);
+    updateManagedUserRoleUI();
+  }
+
+  $("managedUserForm")
+    ?.addEventListener(
+      "submit",
+      createManagedUser
+    );
+
+
   // LOGIN
 
   $("loginForm")
@@ -6842,9 +7313,10 @@ function wireEvents() {
             .signInWithPassword({
 
               email:
-                $("loginEmail")
-                  .value
-                  .trim(),
+                loginIdentifierToEmail(
+                  $("loginEmail")
+                    .value
+                ),
 
               password:
                 $("loginPassword")
