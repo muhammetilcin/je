@@ -8,6 +8,7 @@ let currentProfile = null;
 let currentRole = null;
 let projects = [];
 let activeProjectId = null;
+let editingProjectId = null;
 let mapsInitialized = false;
 
 let mainMap, dashboardMap;
@@ -242,7 +243,15 @@ function renderProjects() {
         <td>${count}</td>
         <td><span class="status">${escapeHtml(p.status)}</span></td>
         <td><div class="progress"><span style="width:${progress}%"></span></div><small>${progress}%</small></td>
-        <td><button class="btn ghost open-map-btn" data-id="${p.id}">Aç</button></td>
+        <td>
+          <div class="row-actions">
+            <button class="btn ghost open-map-btn" data-id="${p.id}">Aç</button>
+            ${currentRole === "admin" ? `
+              <button class="btn secondary edit-project-btn" data-id="${p.id}">Düzenle</button>
+              <button class="btn danger delete-project-btn" data-id="${p.id}">Sil</button>
+            ` : ""}
+          </div>
+        </td>
       </tr>`;
   }).join("");
 
@@ -253,6 +262,14 @@ function renderProjects() {
       renderMapProject();
       switchView("map");
     };
+  });
+
+  document.querySelectorAll(".edit-project-btn").forEach(btn => {
+    btn.onclick = () => openEditModal(btn.dataset.id);
+  });
+
+  document.querySelectorAll(".delete-project-btn").forEach(btn => {
+    btn.onclick = () => deleteProject(btn.dataset.id);
   });
 }
 
@@ -525,12 +542,37 @@ function parseNumberTR(value) {
   return Number(s) || 0;
 }
 
+function formatAreaLabel(area) {
+  if (!Number.isFinite(area) || area <= 0) return "? ha";
+  return area.toLocaleString("tr-TR", { maximumFractionDigits: 2 }) + " ha";
+}
+
+function extractNeighborhoodFromTitle(title="") {
+  const text = String(title || "").replace(/[’‘`]/g, "'");
+  if (!text) return "";
+
+  let m = text.match(/İlçe(?:si|leri)\s*,?\s*(.+?)\s+Mahalle(?:si|leri|lerinde|sinde|si'nde|leri'nde)/i);
+  if (m?.[1]) {
+    return m[1]
+      .replace(/^,\s*/,"")
+      .replace(/\s+/g," ")
+      .replace(/\s*-\s*/g,", ")
+      .trim();
+  }
+
+  m = text.match(/(?:^|,)\s*([^,.;]+?)\s+Mahalle(?:si|leri|lerinde|sinde|si'nde|leri'nde)/i);
+  return m?.[1]?.replace(/\s+/g," ").trim() || "";
+}
+
 function projectNameFromRow(row, index) {
-  const name = firstValue(row, [
-    "İş No","İş Numarası","Kısa İş Adı","İş Kısa Adı","Evrak Kodu",
-    "Proje No","Proje","İş Adı","İşin Adı","Proje Adı","İş","Adı"
-  ]);
-  return String(name || `AKTIF-IS-${index + 1}`).trim();
+  const district = String(firstValue(row, ["İlçe","Ilce","İlçeler","Ilceler"]) || "İlçe belirtilmedi").trim();
+  const area = parseNumberTR(firstValue(row, [
+    "Hektar","Ha","Alan (ha)","Alan Ha","Alan_ha","Hektar Bilgisi",
+    "Yüzölçümü (ha)","Yuzolcumu Ha","Alan"
+  ]));
+  const title = firstValue(row, ["İş Adı / Konu","İş Adı","İşin Adı","Konu","Proje Adı"]);
+  const neighborhood = extractNeighborhoodFromTitle(title) || "Genel";
+  return `${district} - ${neighborhood} - ${formatAreaLabel(area)}`;
 }
 
 async function importProjectsFromExcel(file) {
