@@ -180,6 +180,8 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
   .borehole-modal-grid{grid-template-columns:1fr}
   .field-entry-form{grid-template-columns:1fr}
   .two-col{grid-template-columns:1fr}
+  .field-toolbar,.location-box{display:grid}
+  .field-actions{display:grid;grid-template-columns:1fr 1fr}
 }
 
 
@@ -325,3 +327,22 @@ th{font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--mute
 .borehole-progress-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px}
 .borehole-progress-head span{color:var(--muted);font-size:13px}
 .borehole-progress{height:10px}
+
+
+.field-toolbar{
+  display:flex;justify-content:space-between;gap:12px;align-items:stretch;flex-wrap:wrap;margin:0 0 16px
+}
+.location-box{
+  flex:1 1 360px;display:flex;justify-content:space-between;gap:12px;align-items:center;
+  border:1px solid var(--border);border-radius:12px;padding:12px 14px;background:#f8faf9
+}
+.location-box>div{min-width:0;display:grid;gap:3px}
+.location-box span{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.field-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.point-location-actions{display:flex;gap:8px;flex-wrap:wrap}
+.point-type-badge{
+  display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;
+  font-size:11px;font-weight:800;background:#eef3f5;color:#3a4a52
+}
+.point-type-badge.geotech{background:#eef0fb;color:#4b4f88}
+.point-type-badge.borehole{background:#eaf5f1;color:#1f6f5f}
