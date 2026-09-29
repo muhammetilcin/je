@@ -115,42 +115,32 @@ function applyRole() {
 function switchView(view) {
   if (view === "users" && currentRole !== "admin") return;
 
-  const workspaceViews = ["dashboard","projects","map","boreholes"];
-
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   $(view + "View")?.classList.add("active");
 
   document.querySelectorAll(".nav-item").forEach(v => v.classList.remove("active"));
-  if (workspaceViews.includes(view)) {
-    document.querySelector('.nav-item[data-view="dashboard"]')?.classList.add("active");
-    $("workspaceTabs")?.classList.remove("hidden");
-  } else {
+  if (view === "users") {
     document.querySelector('.nav-item[data-view="users"]')?.classList.add("active");
-    $("workspaceTabs")?.classList.add("hidden");
+  } else {
+    document.querySelector('.nav-item[data-view="dashboard"]')?.classList.add("active");
   }
 
-  document.querySelectorAll(".workspace-tab").forEach(tab => {
-    tab.classList.toggle("active", tab.dataset.workspaceView === view);
-  });
-
   const titles = {
-    dashboard: ["Çalışmalar", "İşleri, saha durumunu ve ilerlemeyi tek çalışma alanından yönetin."],
-    projects: ["Çalışmalar", "İş listesini, firma ve ilerleme durumlarını yönetin."],
-    map: ["Çalışmalar", "Çalışma alanlarını ve saha noktalarını harita üzerinden yönetin."],
-    boreholes: ["Çalışmalar", "Sondaj ve jeoteknik noktalarını konum, saha kaydı ve dosyalarıyla yönetin."],
-    users: ["Yönetim", "Kullanıcı, firma ve yetki ayarlarını yönetin."]
+    dashboard: ["İşler", "Bir işi seçerek durum, harita ve saha noktalarına geçin."],
+    boreholes: ["İş Detayı", "İş durumu, harita ve saha işlemleri aynı ekranda."],
+    users: ["Yönetim", "Kullanıcı, firma ve yetki ayarlarını yönetin."],
+    projects: ["İşler", "İş listesini yönetin."],
+    map: ["Harita", "Çalışma alanlarını ve saha noktalarını yönetin."]
   };
   $("pageTitle").textContent = titles[view]?.[0] || "";
   $("pageSubtitle").textContent = titles[view]?.[1] || "";
+  $("newProjectBtn")?.classList.toggle("hidden", view === "boreholes" || view === "users");
 
-  if (view === "map") {
-    setTimeout(() => {
-      mainMap?.invalidateSize();
-      renderMapProject();
-    }, 120);
+  if (view === "dashboard") {
+    setTimeout(() => dashboardMap?.invalidateSize(), 120);
   }
-  if (view === "dashboard") setTimeout(() => dashboardMap?.invalidateSize(), 100);
   if (view === "boreholes") {
+    renderProjectDetailSummary();
     setTimeout(() => {
       boreholeMap?.invalidateSize();
       renderBoreholeMap();
@@ -308,6 +298,7 @@ function renderAll() {
   renderProjectSelect();
   renderBoreholeProjectSelect();
   renderBoreholes();
+  renderProjectDetailSummary();
   renderMapProject();
   renderBoreholeMap();
 }
@@ -368,20 +359,28 @@ function renderProjects() {
     return;
   }
 
-  $("dashboardProjects").innerHTML = projects.slice(0,5).map(p => `
-    <div class="project-row">
-      <div>
-        <strong>${escapeHtml(p.name)}</strong>
-        <small>${Number(p.area).toLocaleString("tr-TR")} ha · ${escapeHtml(p.company)}</small>
+  $("dashboardProjects").innerHTML = projects.map(p => {
+    const count = boreholeRecords.filter(b => b.project_id === p.id && (b.point_type || "Sondaj") === "Sondaj").length;
+    const progress = getProjectProgress(p.id).percent;
+    return `
+      <div class="project-row project-open-row" data-id="${p.id}" role="button" tabindex="0">
+        <div class="project-row-main">
+          <strong>${escapeHtml(p.name)}</strong>
+          <small>${Number(p.area).toLocaleString("tr-TR")} ha · ${escapeHtml(p.company)}</small>
+          <div class="project-row-meta">
+            <span class="status">${escapeHtml(p.status || "—")}</span>
+            <span>${count} sondaj</span>
+            <span>%${progress} ilerleme</span>
+          </div>
+        </div>
+        <button class="btn secondary open-project-btn" data-id="${p.id}" type="button">İşi Aç</button>
       </div>
-      <button class="btn ghost open-map-btn" data-id="${p.id}">Harita</button>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 
   $("projectsTableBody").innerHTML = projects.map(p => {
     const count = boreholeRecords.filter(b => b.project_id === p.id && (b.point_type || "Sondaj") === "Sondaj").length;
-    const progressInfo = getProjectProgress(p.id);
-    const progress = progressInfo.percent;
+    const progress = getProjectProgress(p.id).percent;
     return `
       <tr>
         <td><strong>${escapeHtml(p.name)}</strong></td>
@@ -392,7 +391,7 @@ function renderProjects() {
         <td><div class="progress"><span style="width:${progress}%"></span></div><small>${progress}%</small></td>
         <td>
           <div class="row-actions">
-            <button class="btn ghost open-map-btn" data-id="${p.id}">Aç</button>
+            <button class="btn ghost open-project-btn" data-id="${p.id}">Aç</button>
             ${currentRole === "admin" ? `
               <button class="btn secondary edit-project-btn" data-id="${p.id}">Düzenle</button>
               <button class="btn danger delete-project-btn" data-id="${p.id}">Sil</button>
@@ -402,12 +401,17 @@ function renderProjects() {
       </tr>`;
   }).join("");
 
-  document.querySelectorAll(".open-map-btn").forEach(btn => {
-    btn.onclick = () => {
-      activeProjectId = btn.dataset.id;
-      $("mapProjectSelect").value = activeProjectId;
-      renderMapProject();
-      switchView("map");
+  document.querySelectorAll(".open-project-btn").forEach(btn => {
+    btn.onclick = e => {
+      e.stopPropagation();
+      openProjectDetail(btn.dataset.id);
+    };
+  });
+
+  document.querySelectorAll(".project-open-row").forEach(row => {
+    row.onclick = () => openProjectDetail(row.dataset.id);
+    row.onkeydown = e => {
+      if (e.key === "Enter" || e.key === " ") openProjectDetail(row.dataset.id);
     };
   });
 
@@ -873,13 +877,16 @@ async function syncBoreholeRecords(projectId, geojson) {
   }
 }
 
-async function importLayer(kind) {
+async function importLayer(kind, inputId=null) {
   if (currentRole !== "admin") return toast("Bu işlem yalnızca Yönetici rolüne açık.");
   const p = projects.find(x => x.id === activeProjectId);
   if (!p) return toast("Önce bir iş seçin.");
 
-  const input = kind === "boundary" ? $("boundaryFile") : $("boreholeFile");
-  const file = input.files[0];
+  const input = inputId
+    ? $(inputId)
+    : (kind === "boundary" ? $("boundaryFile") : $("boreholeFile"));
+  const file = input?.files?.[0];
+  if (!file) return toast("Önce KML/KMZ dosyası seçin.");
 
   try {
     const raw = await fileToGeoJSON(file);
@@ -981,6 +988,45 @@ async function saveProject(event) {
 }
 
 
+
+function openProjectDetail(projectId) {
+  const p = projects.find(x => x.id === projectId);
+  if (!p) return toast("İş bulunamadı.");
+
+  activeProjectId = projectId;
+  boreholeFilter = "all";
+  renderProjectSelect();
+  renderBoreholeProjectSelect();
+  renderBoreholes();
+  renderProjectDetailSummary();
+  renderMapProject();
+  renderBoreholeMap();
+  switchView("boreholes");
+}
+
+function renderProjectDetailSummary() {
+  const p = projects.find(x => x.id === activeProjectId);
+  if (!p) return;
+
+  const progress = getProjectProgress(p.id).percent;
+  const pointCount = boreholeRecords.filter(b => b.project_id === p.id).length;
+
+  $("projectDetailTitle") && ($("projectDetailTitle").textContent = p.name);
+  $("projectDetailMeta") && ($("projectDetailMeta").textContent = `${pointCount} saha noktası · ${p.company}`);
+  $("projectDetailStatus") && ($("projectDetailStatus").textContent = p.status || "—");
+  $("projectDetailArea") && ($("projectDetailArea").textContent = `${Number(p.area).toLocaleString("tr-TR")} ha`);
+  $("projectDetailCompany") && ($("projectDetailCompany").textContent = p.company || "—");
+  $("projectDetailProgress") && ($("projectDetailProgress").textContent = `%${progress}`);
+
+  if ($("detailBoundaryLayerInfo")) {
+    $("detailBoundaryLayerInfo").textContent = p.boundaryLayerName ? `Yüklü: ${p.boundaryLayerName}` : "Yüklü çalışma alanı yok";
+    $("detailDeleteBoundaryBtn").disabled = !p.boundaryLayerId;
+  }
+  if ($("detailBoreholeLayerInfo")) {
+    $("detailBoreholeLayerInfo").textContent = p.boreholesLayerName ? `Yüklü: ${p.boreholesLayerName}` : "Yüklü sondaj KML/KMZ yok";
+    $("detailDeleteBoreholesBtn").disabled = !p.boreholesLayerId;
+  }
+}
 
 function renderBoreholeProjectSelect() {
   const select = $("boreholeProjectSelect");
@@ -1629,10 +1675,6 @@ function wireEvents() {
     btn.addEventListener("click", () => switchView(btn.dataset.view));
   });
 
-  document.querySelectorAll(".workspace-tab").forEach(btn => {
-    btn.addEventListener("click", () => switchView(btn.dataset.workspaceView));
-  });
-
   $("loginForm").addEventListener("submit", async e => {
     e.preventDefault();
     setLoginMessage("");
@@ -1666,13 +1708,22 @@ function wireEvents() {
 
   $("excelImportBtn").onclick = () => $("excelImportInput").click();
   $("excelExportBtn").onclick = exportProjectsToExcel;
+  $("dashboardExcelImportBtn").onclick = () => $("excelImportInput").click();
+  $("dashboardExcelExportBtn").onclick = exportProjectsToExcel;
+  $("backToJobsBtn").onclick = () => switchView("dashboard");
+  $("editCurrentProjectBtn").onclick = () => {
+    if (activeProjectId) openEditModal(activeProjectId);
+  };
+  $("detailImportBoundaryBtn").onclick = () => importLayer("boundary", "detailBoundaryFile");
+  $("detailImportBoreholesBtn").onclick = () => importLayer("borehole", "detailBoreholeFile");
+  $("detailDeleteBoundaryBtn").onclick = () => deleteProjectLayer("boundary");
+  $("detailDeleteBoreholesBtn").onclick = () => deleteProjectLayer("boreholes");
   $("excelImportInput").addEventListener("change", async e => {
     const file = e.target.files?.[0];
     if (file) await importProjectsFromExcel(file);
   });
   $("closeModalBtn").onclick = closeModal;
   $("cancelModalBtn").onclick = closeModal;
-  $("goProjectsBtn").onclick = () => switchView("projects");
 
   $("projectModal").addEventListener("click", e => {
     if (e.target.id === "projectModal") closeModal();
@@ -1682,16 +1733,6 @@ function wireEvents() {
 
   $("mapProjectSelect").addEventListener("change", e => {
     activeProjectId = e.target.value || null;
-    renderProjectSelect();
-    renderBoreholeProjectSelect();
-    renderBoreholes();
-    renderMapProject();
-    renderBoreholeMap();
-  });
-
-  $("boreholeProjectSelect").addEventListener("change", e => {
-    activeProjectId = e.target.value || null;
-    boreholeFilter = "all";
     renderProjectSelect();
     renderBoreholeProjectSelect();
     renderBoreholes();
