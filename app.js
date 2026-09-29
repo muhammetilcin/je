@@ -313,14 +313,20 @@ function getProjectProgress(projectId) {
 }
 
 async function syncProjectProgress(projectId) {
-  const { data, error } = await sb
+  let result = await sb
     .from("borehole_records")
     .select("status,point_type")
     .eq("project_id", projectId);
 
-  if (error) throw error;
+  if (result.error) {
+    result = await sb
+      .from("borehole_records")
+      .select("status")
+      .eq("project_id", projectId);
+  }
+  if (result.error) throw result.error;
 
-  const sondajRows = (data || []).filter(x => (x.point_type || "Sondaj") === "Sondaj");
+  const sondajRows = (result.data || []).filter(x => (x.point_type || "Sondaj") === "Sondaj");
   const total = sondajRows.length;
   const done = sondajRows.filter(x => x.status === "Tamamlandı").length;
   const percent = total ? Math.round((done / total) * 100) : 0;
@@ -434,7 +440,11 @@ function renderMapProject() {
 
   $("mapProjectName").textContent = p.name;
   $("mapProjectMeta").textContent = `${Number(p.area).toLocaleString("tr-TR")} ha · ${p.company}`;
-  $("mapBoreholeCount").textContent = `${p.boreholes?.features?.length || 0} sondaj`;
+  const projectSondajCount = boreholeRecords.filter(b => b.project_id === p.id && (b.point_type || "Sondaj") === "Sondaj").length;
+  const projectGeoCount = boreholeRecords.filter(b => b.project_id === p.id && b.point_type === "Jeoteknik").length;
+  $("mapBoreholeCount").textContent = projectGeoCount
+    ? `${projectSondajCount} sondaj · ${projectGeoCount} jeoteknik`
+    : `${projectSondajCount} sondaj`;
 
   $("boundaryLayerInfo").textContent = p.boundaryLayerName
     ? `Yüklü: ${p.boundaryLayerName}`
@@ -453,26 +463,49 @@ function renderMapProject() {
     try { bounds.push(mainBoundaryLayer.getBounds()); } catch {}
   }
 
-  if (p.boreholes) {
-    const pointToLayer = (feature, latlng) => L.circleMarker(latlng, { radius: 7, weight: 2, fillOpacity: .9 });
-    const onEachFeature = (feature, layer) => {
-      const props = feature.properties || {};
-      const name = String(props.name || props.Name || props.NAME || props.id || props.ID || "Sondaj");
-      const record = boreholeRecords.find(b => b.project_id === p.id && b.borehole_code === name);
-      const status = record?.status || "Planlandı";
-      layer.bindTooltip(`${escapeHtml(name)}`, {
+  const projectPoints = boreholeRecords.filter(b =>
+    b.project_id === p.id &&
+    Number.isFinite(Number(b.latitude)) &&
+    Number.isFinite(Number(b.longitude))
+  );
+
+  if (projectPoints.length) {
+    mainBoreholeLayer = L.layerGroup();
+    dashBoreholeLayer = L.layerGroup();
+
+    projectPoints.forEach(record => {
+      const label = record.point_type === "Jeoteknik" && record.method
+        ? `${record.borehole_code} · ${record.method}`
+        : record.borehole_code;
+
+      const mainMarker = L.circleMarker([Number(record.latitude), Number(record.longitude)], {
+        radius: record.point_type === "Jeoteknik" ? 8 : 7,
+        weight: 2,
+        fillOpacity: .9
+      });
+      mainMarker.bindTooltip(escapeHtml(label), {
         permanent: true,
         direction: "right",
         offset: [8, 0],
         className: "borehole-label"
       });
-      layer.on("click", () => {
-        if (record) openBoreholeModal(record.id);
-      });
-    };
-    mainBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer, onEachFeature }).addTo(mainMap);
-    dashBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer }).addTo(dashboardMap);
-    try { bounds.push(mainBoreholeLayer.getBounds()); } catch {}
+      mainMarker.on("click", () => openBoreholeModal(record.id));
+      mainMarker.addTo(mainBoreholeLayer);
+
+      L.circleMarker([Number(record.latitude), Number(record.longitude)], {
+        radius: 5,
+        weight: 1,
+        fillOpacity: .85
+      }).addTo(dashBoreholeLayer);
+    });
+
+    mainBoreholeLayer.addTo(mainMap);
+    dashBoreholeLayer.addTo(dashboardMap);
+
+    try {
+      const pointBounds = L.latLngBounds(projectPoints.map(b => [Number(b.latitude), Number(b.longitude)]));
+      if (pointBounds.isValid()) bounds.push(pointBounds);
+    } catch {}
   }
 
   const valid = bounds.filter(b => b?.isValid?.());
@@ -596,7 +629,10 @@ async function saveNewPoint(event) {
       Math.abs(currentLocation.latitude - Number($("pointLat").value)) < 0.000001 &&
       Math.abs(currentLocation.longitude - Number($("pointLng").value)) < 0.000001
         ? currentLocation.accuracy : null,
-    location_captured_at: currentLocation ? currentLocation.capturedAt : null,
+    location_captured_at: currentLocation &&
+      Math.abs(currentLocation.latitude - Number($("pointLat").value)) < 0.000001 &&
+      Math.abs(currentLocation.longitude - Number($("pointLng").value)) < 0.000001
+        ? currentLocation.capturedAt : null,
     created_by: currentUser.id
   };
 
