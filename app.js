@@ -7,7 +7,9 @@ let currentUser = null;
 let currentProfile = null;
 let currentRole = null;
 let projects = [];
+let boreholeRecords = [];
 let activeProjectId = null;
+let activeBoreholeId = null;
 let editingProjectId = null;
 let mapsInitialized = false;
 
@@ -82,6 +84,7 @@ function switchView(view) {
     dashboard: ["Kontrol Paneli", "Tüm işleri, saha durumunu ve ilerlemeyi tek ekrandan izleyin."],
     projects: ["İşler", "Mikrobölgeleme ve jeolojik-jeoteknik işleri yönetin."],
     map: ["Harita", "Çalışma alanlarını ve sondaj/ölçüm noktalarını yönetin."],
+    boreholes: ["Sondajlar", "Sondaj noktalarının saha kayıtlarını, derinliklerini ve dosyalarını yönetin."],
     users: ["Kullanıcılar", "Yönetici ve firma yetkilerini yönetin."]
   };
   $("pageTitle").textContent = titles[view]?.[0] || "";
@@ -179,6 +182,18 @@ async function loadAppData() {
     layers = layerRows || [];
   }
 
+  let boreholeRows = [];
+  if (projectIds.length) {
+    const { data, error } = await sb
+      .from("borehole_records")
+      .select("id,project_id,borehole_code,longitude,latitude,planned_depth_m,actual_depth_m,status,notes,started_at,completed_at,created_at")
+      .in("project_id", projectIds)
+      .order("borehole_code", { ascending: true });
+    if (error) throw error;
+    boreholeRows = data || [];
+  }
+  boreholeRecords = boreholeRows;
+
   projects = (projectRows || []).map(row => {
     const boundary = layers.filter(l => l.project_id === row.id && l.layer_type === "boundary").at(-1)?.geojson || null;
     const boreholes = layers.filter(l => l.project_id === row.id && l.layer_type === "boreholes").at(-1)?.geojson || null;
@@ -205,6 +220,8 @@ function renderAll() {
   renderStats();
   renderProjects();
   renderProjectSelect();
+  renderBoreholeProjectSelect();
+  renderBoreholes();
   renderMapProject();
 }
 
@@ -317,8 +334,13 @@ function renderMapProject() {
     const pointToLayer = (feature, latlng) => L.circleMarker(latlng, { radius: 7, weight: 2, fillOpacity: .9 });
     const onEachFeature = (feature, layer) => {
       const props = feature.properties || {};
-      const name = props.name || props.Name || props.NAME || props.id || props.ID || "Sondaj";
-      layer.bindPopup(`<strong>${escapeHtml(String(name))}</strong><br>${escapeHtml(p.name)}`);
+      const name = String(props.name || props.Name || props.NAME || props.id || props.ID || "Sondaj");
+      const record = boreholeRecords.find(b => b.project_id === p.id && b.borehole_code === name);
+      const status = record?.status || "Planlandı";
+      layer.bindTooltip(`${escapeHtml(name)} · ${escapeHtml(status)}`, { direction: "top" });
+      layer.on("click", () => {
+        if (record) openBoreholeModal(record.id);
+      });
     };
     mainBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer, onEachFeature }).addTo(mainMap);
     dashBoreholeLayer = L.geoJSON(p.boreholes, { pointToLayer }).addTo(dashboardMap);
@@ -383,28 +405,43 @@ function boreholeCode(feature, index) {
 }
 
 async function syncBoreholeRecords(projectId, geojson) {
-  const { error: deleteError } = await sb
+  const { data: existingRows, error: existingError } = await sb
     .from("borehole_records")
-    .delete()
+    .select("id,borehole_code")
     .eq("project_id", projectId);
-  if (deleteError) throw deleteError;
+  if (existingError) throw existingError;
 
-  const rows = [];
-  geojson.features.forEach((feature, index) => {
-    if (feature.geometry?.type !== "Point") return;
+  const existingMap = new Map((existingRows || []).map(r => [String(r.borehole_code), r]));
+  const inserts = [];
+
+  for (let index = 0; index < geojson.features.length; index++) {
+    const feature = geojson.features[index];
+    if (feature.geometry?.type !== "Point") continue;
+
     const [longitude, latitude] = feature.geometry.coordinates || [];
-    rows.push({
-      project_id: projectId,
-      borehole_code: boreholeCode(feature, index),
-      longitude,
-      latitude,
-      status: "Planlandı",
-      created_by: currentUser.id
-    });
-  });
+    const code = boreholeCode(feature, index);
+    const existing = existingMap.get(code);
 
-  if (rows.length) {
-    const { error } = await sb.from("borehole_records").insert(rows);
+    if (existing) {
+      const { error } = await sb
+        .from("borehole_records")
+        .update({ longitude, latitude })
+        .eq("id", existing.id);
+      if (error) throw error;
+    } else {
+      inserts.push({
+        project_id: projectId,
+        borehole_code: code,
+        longitude,
+        latitude,
+        status: "Planlandı",
+        created_by: currentUser.id
+      });
+    }
+  }
+
+  if (inserts.length) {
+    const { error } = await sb.from("borehole_records").insert(inserts);
     if (error) throw error;
   }
 }
@@ -514,6 +551,276 @@ async function saveProject(event) {
   } finally {
     if (saveBtn) saveBtn.disabled = false;
   }
+}
+
+
+
+function renderBoreholeProjectSelect() {
+  const select = $("boreholeProjectSelect");
+  if (!select) return;
+
+  select.innerHTML = projects.length
+    ? projects.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join("")
+    : '<option value="">İş yok</option>';
+
+  if (activeProjectId) select.value = activeProjectId;
+}
+
+function boreholeStatusClass(status="") {
+  const s = String(status).toLocaleLowerCase("tr-TR");
+  if (s.includes("tamam")) return "done";
+  if (s.includes("saha")) return "active";
+  if (s.includes("kontrol")) return "review";
+  return "planned";
+}
+
+function renderBoreholes() {
+  const tbody = $("boreholesTableBody");
+  if (!tbody) return;
+
+  const rows = boreholeRecords.filter(b => b.project_id === activeProjectId);
+  $("bhStatTotal").textContent = rows.length;
+  $("bhStatPlanned").textContent = rows.filter(b => (b.status || "Planlandı") === "Planlandı").length;
+  $("bhStatActive").textContent = rows.filter(b => b.status === "Sahada").length;
+  $("bhStatDone").textContent = rows.filter(b => b.status === "Tamamlandı").length;
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Bu iş için sondaj noktası bulunmuyor. Harita bölümünden KML/KMZ ile sondaj noktalarını içe aktarın.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(b => {
+    const lat = Number.isFinite(Number(b.latitude)) ? Number(b.latitude).toFixed(6) : "—";
+    const lng = Number.isFinite(Number(b.longitude)) ? Number(b.longitude).toFixed(6) : "—";
+    return `
+      <tr>
+        <td><strong>${escapeHtml(b.borehole_code)}</strong></td>
+        <td><small>${lat}, ${lng}</small></td>
+        <td>${b.planned_depth_m ?? "—"} m</td>
+        <td>${b.actual_depth_m ?? "—"} m</td>
+        <td><span class="status bh-status ${boreholeStatusClass(b.status)}">${escapeHtml(b.status || "Planlandı")}</span></td>
+        <td><button class="btn secondary borehole-detail-btn" data-id="${b.id}">Detay / Saha Girişi</button></td>
+      </tr>
+    `;
+  }).join("");
+
+  document.querySelectorAll(".borehole-detail-btn").forEach(btn => {
+    btn.onclick = () => openBoreholeModal(btn.dataset.id);
+  });
+}
+
+async function openBoreholeModal(id) {
+  const b = boreholeRecords.find(x => x.id === id);
+  if (!b) return toast("Sondaj kaydı bulunamadı.");
+
+  activeBoreholeId = id;
+  const p = projects.find(x => x.id === b.project_id);
+
+  $("boreholeModalTitle").textContent = b.borehole_code;
+  $("boreholeModalSubtitle").textContent = p?.name || "Sondaj";
+  $("bhCode").value = b.borehole_code || "";
+  $("bhLat").value = b.latitude ?? "";
+  $("bhLng").value = b.longitude ?? "";
+  $("bhPlannedDepth").value = b.planned_depth_m ?? "";
+  $("bhActualDepth").value = b.actual_depth_m ?? "";
+  $("bhStatus").value = b.status || "Planlandı";
+  $("bhNotes").value = b.notes || "";
+  $("boreholeModal").classList.remove("hidden");
+
+  await Promise.all([
+    loadFieldEntries(id),
+    loadBoreholeAttachments(id)
+  ]);
+}
+
+function closeBoreholeModal() {
+  $("boreholeModal").classList.add("hidden");
+  activeBoreholeId = null;
+  $("boreholeForm").reset();
+  $("fieldEntryForm").reset();
+  $("boreholeFiles").value = "";
+  $("fieldEntriesList").innerHTML = "";
+  $("boreholeFilesList").innerHTML = "";
+}
+
+async function saveBorehole(event) {
+  event.preventDefault();
+  if (!activeBoreholeId) return;
+
+  const status = $("bhStatus").value;
+  const payload = {
+    planned_depth_m: $("bhPlannedDepth").value === "" ? null : Number($("bhPlannedDepth").value),
+    actual_depth_m: $("bhActualDepth").value === "" ? null : Number($("bhActualDepth").value),
+    status,
+    notes: $("bhNotes").value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+
+  if (status === "Sahada") payload.started_at = new Date().toISOString();
+  if (status === "Tamamlandı") payload.completed_at = new Date().toISOString();
+
+  try {
+    const { error } = await sb.from("borehole_records").update(payload).eq("id", activeBoreholeId);
+    if (error) throw error;
+    toast("Sondaj bilgileri kaydedildi.");
+    await loadAppData();
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Sondaj kaydedilemedi.", 5000);
+  }
+}
+
+async function loadFieldEntries(boreholeId) {
+  const { data, error } = await sb
+    .from("field_entries")
+    .select("id,entry_type,depth_from_m,depth_to_m,value_text,notes,created_at")
+    .eq("borehole_id", boreholeId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    $("fieldEntriesList").innerHTML = '<div class="empty-state">Saha kayıtları yüklenemedi.</div>';
+    return;
+  }
+
+  if (!data?.length) {
+    $("fieldEntriesList").innerHTML = '<div class="empty-state">Henüz saha kaydı yok.</div>';
+    return;
+  }
+
+  $("fieldEntriesList").innerHTML = data.map(e => {
+    const depth = e.depth_from_m != null || e.depth_to_m != null
+      ? `${e.depth_from_m ?? "?"} – ${e.depth_to_m ?? "?"} m`
+      : "Derinlik yok";
+    return `
+      <article class="entry-card">
+        <div>
+          <strong>${escapeHtml(e.entry_type)}</strong>
+          <span>${escapeHtml(depth)}</span>
+        </div>
+        <p>${escapeHtml(e.value_text || e.notes || "—")}</p>
+        <button class="entry-delete-btn" data-id="${e.id}" title="Kaydı sil">×</button>
+      </article>
+    `;
+  }).join("");
+
+  document.querySelectorAll(".entry-delete-btn").forEach(btn => {
+    btn.onclick = () => deleteFieldEntry(btn.dataset.id);
+  });
+}
+
+async function addFieldEntry(event) {
+  event.preventDefault();
+  if (!activeBoreholeId) return;
+
+  try {
+    const { error } = await sb.from("field_entries").insert({
+      borehole_id: activeBoreholeId,
+      entry_type: $("entryType").value,
+      depth_from_m: $("entryDepthFrom").value === "" ? null : Number($("entryDepthFrom").value),
+      depth_to_m: $("entryDepthTo").value === "" ? null : Number($("entryDepthTo").value),
+      value_text: $("entryValue").value.trim() || null,
+      notes: $("entryNotes").value.trim() || null,
+      created_by: currentUser.id
+    });
+    if (error) throw error;
+
+    $("fieldEntryForm").reset();
+    toast("Saha kaydı eklendi.");
+    await loadFieldEntries(activeBoreholeId);
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Saha kaydı eklenemedi.", 5000);
+  }
+}
+
+async function deleteFieldEntry(entryId) {
+  if (!window.confirm("Bu saha kaydı silinsin mi?")) return;
+  try {
+    const { error } = await sb.from("field_entries").delete().eq("id", entryId);
+    if (error) throw error;
+    await loadFieldEntries(activeBoreholeId);
+    toast("Saha kaydı silindi.");
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Saha kaydı silinemedi.", 5000);
+  }
+}
+
+function safeFileName(name="dosya") {
+  return name
+    .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+    .replace(/[^a-zA-Z0-9._-]+/g,"_");
+}
+
+async function uploadBoreholeFiles() {
+  if (!activeBoreholeId) return;
+  const files = [...($("boreholeFiles").files || [])];
+  if (!files.length) return toast("Yüklenecek dosya seçilmedi.");
+
+  const b = boreholeRecords.find(x => x.id === activeBoreholeId);
+  if (!b) return toast("Sondaj kaydı bulunamadı.");
+
+  try {
+    for (const file of files) {
+      const path = `${b.project_id}/${b.id}/${Date.now()}_${safeFileName(file.name)}`;
+      const { error: uploadError } = await sb.storage
+        .from("field-files")
+        .upload(path, file, { upsert: false, contentType: file.type || undefined });
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await sb.from("attachments").insert({
+        project_id: b.project_id,
+        borehole_id: b.id,
+        file_name: file.name,
+        storage_path: path,
+        mime_type: file.type || null,
+        size_bytes: file.size,
+        uploaded_by: currentUser.id
+      });
+      if (dbError) throw dbError;
+    }
+
+    $("boreholeFiles").value = "";
+    toast(`${files.length} dosya yüklendi.`);
+    await loadBoreholeAttachments(activeBoreholeId);
+  } catch (err) {
+    console.error(err);
+    toast(err.message || "Dosya yüklenemedi.", 5000);
+  }
+}
+
+async function loadBoreholeAttachments(boreholeId) {
+  const { data, error } = await sb
+    .from("attachments")
+    .select("id,file_name,storage_path,mime_type,size_bytes,created_at")
+    .eq("borehole_id", boreholeId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    $("boreholeFilesList").innerHTML = '<div class="empty-state">Dosyalar yüklenemedi.</div>';
+    return;
+  }
+
+  if (!data?.length) {
+    $("boreholeFilesList").innerHTML = '<div class="empty-state">Henüz dosya yok.</div>';
+    return;
+  }
+
+  const rendered = [];
+  for (const file of data) {
+    const { data: signed } = await sb.storage.from("field-files").createSignedUrl(file.storage_path, 3600);
+    const url = signed?.signedUrl || "#";
+    const size = file.size_bytes ? (Number(file.size_bytes) / 1024 / 1024).toFixed(2) + " MB" : "";
+    rendered.push(`
+      <a class="attachment-card" href="${url}" target="_blank" rel="noopener">
+        <strong>${escapeHtml(file.file_name)}</strong>
+        <span>${escapeHtml(size)}</span>
+      </a>
+    `);
+  }
+  $("boreholeFilesList").innerHTML = rendered.join("");
 }
 
 
