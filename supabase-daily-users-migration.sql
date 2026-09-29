@@ -59,3 +59,82 @@ begin
       using (public.is_admin());
   end if;
 end $$;
+
+
+create table if not exists public.daily_reports (
+  id uuid primary key default gen_random_uuid(),
+  report_date date not null,
+  project_id uuid references public.projects(id) on delete cascade,
+  report_text text not null,
+  created_by uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.daily_reports enable row level security;
+
+grant select, insert, update, delete on table public.daily_reports to authenticated;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_policies
+    where schemaname='public'
+      and tablename='daily_reports'
+      and policyname='daily_reports_select_access'
+  ) then
+    create policy daily_reports_select_access
+      on public.daily_reports
+      for select
+      to authenticated
+      using (
+        public.is_admin()
+        or (
+          project_id is not null
+          and public.has_project_access(project_id)
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname='public'
+      and tablename='daily_reports'
+      and policyname='daily_reports_insert_access'
+  ) then
+    create policy daily_reports_insert_access
+      on public.daily_reports
+      for insert
+      to authenticated
+      with check (
+        created_by = auth.uid()
+        and (
+          public.is_admin()
+          or (
+            project_id is not null
+            and public.has_project_access(project_id)
+          )
+        )
+      );
+  end if;
+
+  if not exists (
+    select 1 from pg_policies
+    where schemaname='public'
+      and tablename='daily_reports'
+      and policyname='daily_reports_update_access'
+  ) then
+    create policy daily_reports_update_access
+      on public.daily_reports
+      for update
+      to authenticated
+      using (
+        public.is_admin()
+        or created_by = auth.uid()
+      )
+      with check (
+        public.is_admin()
+        or created_by = auth.uid()
+      );
+  end if;
+end $$;
