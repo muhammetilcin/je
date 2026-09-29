@@ -8,6 +8,7 @@ let currentProfile = null;
 let currentRole = null;
 let projects = [];
 let boreholeRecords = [];
+let boreholeFilter = "all";
 let activeProjectId = null;
 let activeBoreholeId = null;
 let editingProjectId = null;
@@ -265,6 +266,41 @@ function renderAll() {
   renderBoreholeMap();
 }
 
+function getProjectProgress(projectId) {
+  const rows = boreholeRecords.filter(b => b.project_id === projectId);
+  if (!rows.length) {
+    const p = projects.find(x => x.id === projectId);
+    return { total: 0, done: 0, percent: Number(p?.progress || 0) };
+  }
+  const done = rows.filter(b => b.status === "Tamamlandı").length;
+  return {
+    total: rows.length,
+    done,
+    percent: Math.round((done / rows.length) * 100)
+  };
+}
+
+async function syncProjectProgress(projectId) {
+  const { data, error } = await sb
+    .from("borehole_records")
+    .select("status")
+    .eq("project_id", projectId);
+
+  if (error) throw error;
+
+  const total = data?.length || 0;
+  const done = (data || []).filter(x => x.status === "Tamamlandı").length;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+
+  const { error: updateError } = await sb
+    .from("projects")
+    .update({ progress: percent })
+    .eq("id", projectId);
+
+  if (updateError) throw updateError;
+  return percent;
+}
+
 function renderStats() {
   $("statProjects").textContent = projects.length;
   $("statBoreholes").textContent = projects.reduce((n,p) => n + (p.boreholes?.features?.length || 0), 0);
@@ -291,7 +327,8 @@ function renderProjects() {
 
   $("projectsTableBody").innerHTML = projects.map(p => {
     const count = p.boreholes?.features?.length || 0;
-    const progress = Number(p.progress || 0);
+    const progressInfo = getProjectProgress(p.id);
+    const progress = progressInfo.percent;
     return `
       <tr>
         <td><strong>${escapeHtml(p.name)}</strong></td>
@@ -434,7 +471,10 @@ function renderBoreholeMap() {
     try { bounds.push(boreholeBoundaryLayer.getBounds()); } catch {}
   }
 
-  const rows = boreholeRecords.filter(b => b.project_id === p.id);
+  const allRows = boreholeRecords.filter(b => b.project_id === p.id);
+  const rows = boreholeFilter === "all"
+    ? allRows
+    : allRows.filter(b => (b.status || "Planlandı") === boreholeFilter);
   if (rows.length) {
     boreholePointsLayer = L.layerGroup();
 
@@ -486,6 +526,20 @@ function toggleMapSidebar() {
   $("toggleMapSidebarBtn").title = collapsed ? "Sol paneli aç" : "Sol paneli kapat";
 
   setTimeout(() => mainMap?.invalidateSize(), 260);
+}
+
+function toggleAppSidebar() {
+  const shell = $("appShell");
+  const collapsed = shell.classList.toggle("sidebar-collapsed");
+  $("toggleAppSidebarBtn").textContent = collapsed ? "›" : "‹";
+  $("toggleAppSidebarBtn").title = collapsed ? "Menüyü genişlet" : "Menüyü daralt";
+  localStorage.setItem("je_sidebar_collapsed", collapsed ? "1" : "0");
+
+  setTimeout(() => {
+    mainMap?.invalidateSize();
+    dashboardMap?.invalidateSize();
+    boreholeMap?.invalidateSize();
+  }, 260);
 }
 
 
@@ -737,14 +791,34 @@ function renderBoreholes() {
   const tbody = $("boreholesTableBody");
   if (!tbody) return;
 
-  const rows = boreholeRecords.filter(b => b.project_id === activeProjectId);
-  $("bhStatTotal").textContent = rows.length;
-  $("bhStatPlanned").textContent = rows.filter(b => (b.status || "Planlandı") === "Planlandı").length;
-  $("bhStatActive").textContent = rows.filter(b => b.status === "Sahada").length;
-  $("bhStatDone").textContent = rows.filter(b => b.status === "Tamamlandı").length;
+  const allRows = boreholeRecords.filter(b => b.project_id === activeProjectId);
+  const planned = allRows.filter(b => (b.status || "Planlandı") === "Planlandı").length;
+  const active = allRows.filter(b => b.status === "Sahada").length;
+  const done = allRows.filter(b => b.status === "Tamamlandı").length;
+  const progress = allRows.length ? Math.round((done / allRows.length) * 100) : 0;
+
+  $("bhStatTotal").textContent = allRows.length;
+  $("bhStatPlanned").textContent = planned;
+  $("bhStatActive").textContent = active;
+  $("bhStatDone").textContent = done;
+  $("bhProgressText").textContent = `${done} / ${allRows.length} tamamlandı · %${progress}`;
+  $("bhProgressBar").style.width = `${progress}%`;
+
+  document.querySelectorAll(".borehole-stat-card").forEach(card => {
+    card.classList.toggle("active", card.dataset.bhFilter === boreholeFilter);
+  });
+
+  const rows = boreholeFilter === "all"
+    ? allRows
+    : allRows.filter(b => (b.status || "Planlandı") === boreholeFilter);
+
+  if (!allRows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Bu iş için sondaj noktası bulunmuyor. Harita bölümünden KML/KMZ ile sondaj noktalarını içe aktarın.</td></tr>';
+    return;
+  }
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Bu iş için sondaj noktası bulunmuyor. Harita bölümünden KML/KMZ ile sondaj noktalarını içe aktarın.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-state">${escapeHtml(boreholeFilter)} durumunda sondaj bulunmuyor.</td></tr>`;
     return;
   }
 
@@ -819,8 +893,10 @@ async function saveBorehole(event) {
   if (status === "Tamamlandı") payload.completed_at = new Date().toISOString();
 
   try {
+    const record = boreholeRecords.find(x => x.id === activeBoreholeId);
     const { error } = await sb.from("borehole_records").update(payload).eq("id", activeBoreholeId);
     if (error) throw error;
+    if (record?.project_id) await syncProjectProgress(record.project_id);
     toast("Sondaj bilgileri kaydedildi.");
     await loadAppData();
   } catch (err) {
@@ -1392,11 +1468,20 @@ function wireEvents() {
 
   $("boreholeProjectSelect").addEventListener("change", e => {
     activeProjectId = e.target.value || null;
+    boreholeFilter = "all";
     renderProjectSelect();
     renderBoreholeProjectSelect();
     renderBoreholes();
     renderMapProject();
     renderBoreholeMap();
+  });
+
+  document.querySelectorAll(".borehole-stat-card").forEach(card => {
+    card.addEventListener("click", () => {
+      boreholeFilter = card.dataset.bhFilter || "all";
+      renderBoreholes();
+      renderBoreholeMap();
+    });
   });
 
   $("closeBoreholeModalBtn").onclick = closeBoreholeModal;
@@ -1408,6 +1493,7 @@ function wireEvents() {
   $("fieldEntryForm").addEventListener("submit", addFieldEntry);
   $("uploadBoreholeFilesBtn").onclick = uploadBoreholeFiles;
   $("toggleMapSidebarBtn").onclick = toggleMapSidebar;
+  $("toggleAppSidebarBtn").onclick = toggleAppSidebar;
   $("deleteBoundaryLayerBtn").onclick = () => deleteProjectLayer("boundary");
   $("deleteBoreholeLayerBtn").onclick = () => deleteProjectLayer("boreholes");
 
@@ -1417,6 +1503,13 @@ function wireEvents() {
 
 document.addEventListener("DOMContentLoaded", () => {
   wireEvents();
+
+  if (localStorage.getItem("je_sidebar_collapsed") === "1") {
+    $("appShell").classList.add("sidebar-collapsed");
+    $("toggleAppSidebarBtn").textContent = "›";
+    $("toggleAppSidebarBtn").title = "Menüyü genişlet";
+  }
+
   showAuth();
   initializeAuth();
 });
