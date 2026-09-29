@@ -44,7 +44,7 @@
         <button class="nav-item active" data-view="dashboard">◫ <span>Kontrol Paneli</span></button>
         <button class="nav-item" data-view="projects">▣ <span>İşler</span></button>
         <button class="nav-item" data-view="map">⌖ <span>Harita</span></button>
-        <button class="nav-item" data-view="boreholes">● <span>Sondajlar</span></button>
+        <button class="nav-item" data-view="boreholes">● <span>Saha Noktaları</span></button>
         <button class="nav-item admin-only" data-view="users">👥 <span>Kullanıcılar</span></button>
       </nav>
 
@@ -163,12 +163,26 @@
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>Sondaj Noktaları</h2>
-              <p>Sondajların saha durumunu, derinliklerini, kayıtlarını ve dosyalarını yönetin.</p>
+              <h2>Sondaj ve Jeoteknik Noktaları</h2>
+              <p>Sahadaki sondaj ve jeoteknik noktalarını konumlarıyla birlikte yönetin.</p>
             </div>
             <div class="borehole-project-picker">
               <label class="field-label">İş</label>
               <select id="boreholeProjectSelect" class="input"></select>
+            </div>
+          </div>
+
+          <div class="field-toolbar">
+            <div class="location-box">
+              <div>
+                <strong>Konum</strong>
+                <span id="currentLocationInfo">Konum alınmadı</span>
+              </div>
+              <button id="locateMeBtn" class="btn ghost" type="button">Konumumu Göster</button>
+            </div>
+            <div class="field-actions">
+              <button id="addBoreholePointBtn" class="btn primary" type="button">+ Sondaj Noktası</button>
+              <button id="addGeotechnicalPointBtn" class="btn secondary" type="button">+ Jeoteknik Nokta</button>
             </div>
           </div>
 
@@ -201,7 +215,8 @@
             <table>
               <thead>
                 <tr>
-                  <th>Sondaj</th>
+                  <th>Nokta</th>
+                  <th>Tür</th>
                   <th>Koordinat</th>
                   <th>Planlanan</th>
                   <th>Gerçekleşen</th>
@@ -257,6 +272,64 @@
     </div>
   </div>
 
+  <div id="pointModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h2 id="pointModalTitle">Yeni Saha Noktası</h2>
+          <p id="pointModalSubtitle">Konumu cihazdan alabilir veya koordinatı elle girebilirsiniz.</p>
+        </div>
+        <button id="closePointModalBtn" class="icon-btn">×</button>
+      </div>
+
+      <form id="pointForm" class="form-grid">
+        <input id="pointType" type="hidden" />
+
+        <label class="field-label">Nokta kodu</label>
+        <input id="pointCode" class="input" required maxlength="40" placeholder="Örn. SK-16 / JT-01" />
+
+        <div id="pointMethodGroup">
+          <label class="field-label">Jeoteknik yöntem</label>
+          <select id="pointMethod" class="input">
+            <option value="">Seçiniz</option>
+            <option>MASW</option>
+            <option>ReMi</option>
+            <option>Mikrotremor / HVSR</option>
+            <option>Sismik Kırılma</option>
+            <option>ERT / Özdirenç</option>
+            <option>Presiyometre</option>
+            <option>Diğer</option>
+          </select>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <label class="field-label">Enlem</label>
+            <input id="pointLat" class="input" type="number" step="0.0000001" required />
+          </div>
+          <div>
+            <label class="field-label">Boylam</label>
+            <input id="pointLng" class="input" type="number" step="0.0000001" required />
+          </div>
+        </div>
+
+        <div class="point-location-actions">
+          <button id="useCurrentLocationBtn" class="btn secondary" type="button">Mevcut Konumu Kullan</button>
+          <button id="pickPointFromMapBtn" class="btn ghost" type="button">Haritadan Seç</button>
+        </div>
+        <small id="pointLocationAccuracy" class="muted">Konum doğruluğu: —</small>
+
+        <label class="field-label">Not</label>
+        <textarea id="pointNotes" class="input textarea" rows="3" placeholder="Nokta ile ilgili not..."></textarea>
+
+        <div class="modal-actions">
+          <button id="cancelPointModalBtn" class="btn ghost" type="button">Vazgeç</button>
+          <button class="btn primary" type="submit">Noktayı Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div id="boreholeModal" class="modal-backdrop hidden">
     <div class="modal modal-large">
       <div class="modal-head">
@@ -270,8 +343,19 @@
       <div class="borehole-modal-grid">
         <section>
           <form id="boreholeForm" class="form-grid">
-            <label class="field-label">Sondaj kodu</label>
+            <label class="field-label">Nokta kodu</label>
             <input id="bhCode" class="input" readonly />
+
+            <div class="two-col">
+              <div>
+                <label class="field-label">Nokta türü</label>
+                <input id="bhPointType" class="input" readonly />
+              </div>
+              <div>
+                <label class="field-label">Yöntem</label>
+                <input id="bhMethod" class="input" readonly />
+              </div>
+            </div>
 
             <div class="two-col">
               <div>
