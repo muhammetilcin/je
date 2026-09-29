@@ -88,6 +88,7 @@ button{cursor:pointer}
 .dashboard-grid{display:grid;grid-template-columns:minmax(340px,.9fr) minmax(420px,1.4fr);gap:16px}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
 .panel-head{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:16px}
+.panel-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .panel-head.compact{margin-bottom:12px}
 .panel-head h2{margin:0 0 4px;font-size:18px}
 .panel-head p{margin:0;color:var(--muted);font-size:14px}
