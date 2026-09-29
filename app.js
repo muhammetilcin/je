@@ -1171,8 +1171,28 @@ function wireEvents() {
 
   $("mapProjectSelect").addEventListener("change", e => {
     activeProjectId = e.target.value || null;
+    renderProjectSelect();
+    renderBoreholeProjectSelect();
+    renderBoreholes();
     renderMapProject();
   });
+
+  $("boreholeProjectSelect").addEventListener("change", e => {
+    activeProjectId = e.target.value || null;
+    renderProjectSelect();
+    renderBoreholeProjectSelect();
+    renderBoreholes();
+    renderMapProject();
+  });
+
+  $("closeBoreholeModalBtn").onclick = closeBoreholeModal;
+  $("cancelBoreholeModalBtn").onclick = closeBoreholeModal;
+  $("boreholeModal").addEventListener("click", e => {
+    if (e.target.id === "boreholeModal") closeBoreholeModal();
+  });
+  $("boreholeForm").addEventListener("submit", saveBorehole);
+  $("fieldEntryForm").addEventListener("submit", addFieldEntry);
+  $("uploadBoreholeFilesBtn").onclick = uploadBoreholeFiles;
 
   $("importBoundaryBtn").onclick = () => importLayer("boundary");
   $("importBoreholesBtn").onclick = () => importLayer("borehole");
