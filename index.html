@@ -4,13 +4,32 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>JE | Jeolojik-Jeoteknik Saha Takip</title>
-
   <link rel="preconnect" href="https://unpkg.com">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="appShell">
+  <section id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-mark large">JE</div>
+        <div>
+          <h1>JE Saha Takip</h1>
+          <p>Jeolojik - Jeoteknik çalışma yönetimi</p>
+        </div>
+      </div>
+      <form id="loginForm">
+        <label class="field-label">E-posta</label>
+        <input id="loginEmail" class="input" type="email" autocomplete="username" required />
+        <label class="field-label">Şifre</label>
+        <input id="loginPassword" class="input" type="password" autocomplete="current-password" required />
+        <button id="loginBtn" class="btn primary full" type="submit">Giriş Yap</button>
+        <div id="loginMessage" class="login-message"></div>
+      </form>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-hidden">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">JE</div>
@@ -28,12 +47,12 @@
       </nav>
 
       <div class="sidebar-bottom">
-        <label class="field-label">Demo rolü</label>
-        <select id="roleSelect" class="input">
-          <option value="admin">Yönetici</option>
-          <option value="company">Firma</option>
-        </select>
-        <small class="muted">Gerçek kullanıcı girişi daha sonra Supabase ile bağlanacak.</small>
+        <div class="signed-user">
+          <strong id="signedUserName">—</strong>
+          <small id="signedUserEmail">—</small>
+          <span id="sidebarRoleBadge" class="sidebar-role">—</span>
+        </div>
+        <button id="logoutBtn" class="btn logout-btn">Çıkış Yap</button>
       </div>
     </aside>
 
@@ -44,47 +63,31 @@
           <p id="pageSubtitle">Tüm işleri, saha durumunu ve ilerlemeyi tek ekrandan izleyin.</p>
         </div>
         <div class="topbar-actions">
-          <span class="role-badge" id="roleBadge">Yönetici</span>
+          <span class="role-badge" id="roleBadge">—</span>
           <button id="newProjectBtn" class="btn primary admin-only">+ Yeni İş</button>
         </div>
       </header>
 
       <section id="dashboardView" class="view active">
         <div class="stats-grid">
-          <article class="stat-card">
-            <span>Aktif İş</span><strong id="statProjects">0</strong><small>Toplam kayıt</small>
-          </article>
-          <article class="stat-card">
-            <span>Toplam Sondaj</span><strong id="statBoreholes">0</strong><small>İçe aktarılan nokta</small>
-          </article>
-          <article class="stat-card">
-            <span>Toplam Alan</span><strong id="statArea">0 ha</strong><small>İşlerin toplam alanı</small>
-          </article>
-          <article class="stat-card">
-            <span>Kontrol Bekleyen</span><strong id="statPending">0</strong><small>Saha kayıtları</small>
-          </article>
+          <article class="stat-card"><span>Aktif İş</span><strong id="statProjects">0</strong><small>Toplam kayıt</small></article>
+          <article class="stat-card"><span>Toplam Sondaj</span><strong id="statBoreholes">0</strong><small>İçe aktarılan nokta</small></article>
+          <article class="stat-card"><span>Toplam Alan</span><strong id="statArea">0 ha</strong><small>İşlerin toplam alanı</small></article>
+          <article class="stat-card"><span>Kontrol Bekleyen</span><strong id="statPending">0</strong><small>Saha kayıtları</small></article>
         </div>
 
         <div class="dashboard-grid">
           <section class="panel">
             <div class="panel-head">
-              <div>
-                <h2>İşler</h2>
-                <p>Kısa iş adı, alan ve firma bazında takip.</p>
-              </div>
+              <div><h2>İşler</h2><p>Kısa iş adı, alan ve firma bazında takip.</p></div>
               <button class="btn ghost" id="goProjectsBtn">Tümünü Aç</button>
             </div>
-            <div id="dashboardProjects" class="project-list empty-state">
-              Henüz iş oluşturulmadı.
-            </div>
+            <div id="dashboardProjects" class="project-list empty-state">Henüz iş oluşturulmadı.</div>
           </section>
 
           <section class="panel map-panel">
             <div class="panel-head">
-              <div>
-                <h2>Genel Harita</h2>
-                <p>Çalışma alanları ve sondaj noktaları.</p>
-              </div>
+              <div><h2>Genel Harita</h2><p>Çalışma alanları ve sondaj noktaları.</p></div>
             </div>
             <div id="dashboardMap" class="map"></div>
           </section>
@@ -94,25 +97,13 @@
       <section id="projectsView" class="view">
         <section class="panel">
           <div class="panel-head">
-            <div>
-              <h2>İş Listesi</h2>
-              <p>Firma kullanıcıları yalnızca kendilerine atanmış işleri görecek.</p>
-            </div>
+            <div><h2>İş Listesi</h2><p>Firma kullanıcıları yalnızca kendilerine atanmış işleri görür.</p></div>
             <button class="btn primary admin-only" id="newProjectBtn2">+ Yeni İş</button>
           </div>
-
           <div class="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>İş</th>
-                  <th>Alan</th>
-                  <th>Firma</th>
-                  <th>Sondaj</th>
-                  <th>Durum</th>
-                  <th>İlerleme</th>
-                  <th></th>
-                </tr>
+                <tr><th>İş</th><th>Alan</th><th>Firma</th><th>Sondaj</th><th>Durum</th><th>İlerleme</th><th></th></tr>
               </thead>
               <tbody id="projectsTableBody"></tbody>
             </table>
@@ -124,10 +115,7 @@
         <div class="map-layout">
           <aside class="map-side panel">
             <div class="panel-head compact">
-              <div>
-                <h2>Harita</h2>
-                <p>Bir iş seçin ve veri yükleyin.</p>
-              </div>
+              <div><h2>Harita</h2><p>Bir iş seçin ve veri yükleyin.</p></div>
             </div>
 
             <label class="field-label">İş</label>
@@ -151,7 +139,6 @@
               <span id="mapBoreholeCount">0 sondaj</span>
             </div>
           </aside>
-
           <div id="mainMap" class="map main-map"></div>
         </div>
       </section>
@@ -161,18 +148,12 @@
           <div class="panel-head">
             <div>
               <h2>Kullanıcılar ve Yetkiler</h2>
-              <p>Bu ekran prototiptir. Gerçek kullanıcılar Supabase Auth ile oluşturulacak.</p>
+              <p>Yönetici tüm işleri görür. Firma hesabı sadece kendisine atanmış işlere erişir.</p>
             </div>
           </div>
           <div class="role-cards">
-            <article class="role-card">
-              <h3>Yönetici</h3>
-              <p>Tüm işleri görür, iş oluşturur, KML/KMZ yükler, veri girer, kontrol eder ve yönetir.</p>
-            </article>
-            <article class="role-card">
-              <h3>Firma</h3>
-              <p>Yalnızca kendisine atanmış işleri görür ve yalnızca o işlerde izin verilen saha verilerini girer.</p>
-            </article>
+            <article class="role-card"><h3>Yönetici</h3><p>Tüm işlerde görüntüleme, veri girişi, KML/KMZ yükleme ve kontrol yetkisine sahiptir.</p></article>
+            <article class="role-card"><h3>Firma</h3><p>Yalnızca project_members tablosunda kendisine atanmış işleri görebilir ve izin verilen saha verilerini girebilir.</p></article>
           </div>
         </section>
       </section>
@@ -182,31 +163,20 @@
   <div id="projectModal" class="modal-backdrop hidden">
     <div class="modal">
       <div class="modal-head">
-        <div>
-          <h2>Yeni İş Oluştur</h2>
-          <p>İşi kısa bir ad ve hektar bilgisiyle kaydedin.</p>
-        </div>
+        <div><h2>Yeni İş Oluştur</h2><p>İşi kısa bir ad ve hektar bilgisiyle kaydedin.</p></div>
         <button id="closeModalBtn" class="icon-btn">×</button>
       </div>
-
       <form id="projectForm">
         <label class="field-label">Kısa iş adı</label>
         <input id="projectName" class="input" placeholder="Örn. BAYRAKLI-01" required maxlength="40" />
-
         <label class="field-label">Alan (ha)</label>
         <input id="projectArea" class="input" type="number" min="0" step="0.01" placeholder="245" required />
-
         <label class="field-label">Firma</label>
         <input id="projectCompany" class="input" placeholder="Örn. ABC Jeoteknik" required maxlength="80" />
-
         <label class="field-label">Durum</label>
         <select id="projectStatus" class="input">
-          <option>Planlandı</option>
-          <option>Sahada</option>
-          <option>Ofis Kontrolünde</option>
-          <option>Tamamlandı</option>
+          <option>Planlandı</option><option>Sahada</option><option>Ofis Kontrolünde</option><option>Tamamlandı</option>
         </select>
-
         <div class="modal-actions">
           <button type="button" id="cancelModalBtn" class="btn ghost">Vazgeç</button>
           <button type="submit" class="btn primary">İşi Kaydet</button>
@@ -220,6 +190,8 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
   <script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
