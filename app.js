@@ -35,6 +35,9 @@ let fieldPointSchemaAvailable = true;
 let currentLocation = null;
 let locationMarker = null;
 let locationAccuracyCircle = null;
+let locationWatchId = null;
+let autoLocationHasFix = false;
+let lastLocationErrorAt = 0;
 
 let pickingPointFromMap = false;
 
@@ -2312,6 +2315,8 @@ function switchView(view) {
 
     renderProjectDetailSummary();
 
+    startAutoLocationTracking();
+
     setTimeout(
       () => {
 
@@ -2320,9 +2325,18 @@ function switchView(view) {
 
         renderBoreholeMap();
 
+        if (currentLocation) {
+          showLocationOnMap(currentLocation, !autoLocationHasFix);
+          autoLocationHasFix = true;
+        }
+
       },
       150
     );
+
+  } else {
+
+    stopAutoLocationTracking();
 
   }
 }
@@ -3541,6 +3555,26 @@ function openPointModal(type) {
     false;
 
 
+  if (currentLocation) {
+
+    $("pointLat").value =
+      currentLocation.latitude.toFixed(7);
+
+    $("pointLng").value =
+      currentLocation.longitude.toFixed(7);
+
+    setText(
+      "pointLocationAccuracy",
+      `Otomatik GPS konumu · doğruluk: ${Math.round(currentLocation.accuracy || 0)} m`
+    );
+
+  } else {
+
+    startAutoLocationTracking();
+
+  }
+
+
   $("pointCode")
     ?.focus();
 }
@@ -3646,7 +3680,7 @@ function getDeviceLocation() {
 }
 
 
-function showLocationOnMap(location) {
+function showLocationOnMap(location, recenter = false) {
 
   if (
     !boreholeMap ||
@@ -3730,13 +3764,120 @@ function showLocationOnMap(location) {
   }
 
 
-  boreholeMap.setView(
-    [
-      location.latitude,
-      location.longitude
-    ],
-    18
+  if (recenter) {
+    boreholeMap.setView(
+      [
+        location.latitude,
+        location.longitude
+      ],
+      Math.max(boreholeMap.getZoom(), 18)
+    );
+  }
+}
+
+
+function updateCurrentLocationUI(location) {
+  currentLocation = location;
+
+  const accuracyText = Number.isFinite(Number(location.accuracy))
+    ? ` ±${Math.round(location.accuracy)} m`
+    : "";
+
+  setText(
+    "currentLocationInfo",
+    `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}${accuracyText}`
   );
+
+  if ($("locateMeBtn")) {
+    $("locateMeBtn").textContent = "Konum Takibi Açık";
+    $("locateMeBtn").title = "Haritada konumuma git";
+  }
+}
+
+
+function startAutoLocationTracking() {
+  if (!navigator.geolocation || !boreholeMap) return;
+
+  if (locationWatchId !== null) {
+    return;
+  }
+
+  autoLocationHasFix = false;
+
+  setText(
+    "currentLocationInfo",
+    "Konum otomatik alınıyor..."
+  );
+
+  locationWatchId = navigator.geolocation.watchPosition(
+    position => {
+      const location = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+        capturedAt: new Date(position.timestamp || Date.now()).toISOString()
+      };
+
+      updateCurrentLocationUI(location);
+
+      showLocationOnMap(
+        location,
+        !autoLocationHasFix
+      );
+
+      autoLocationHasFix = true;
+    },
+
+    error => {
+      const now = Date.now();
+
+      setText(
+        "currentLocationInfo",
+        error.code === 1
+          ? "Konum izni bekleniyor"
+          : "Konum alınamadı"
+      );
+
+      if ($("locateMeBtn")) {
+        $("locateMeBtn").textContent = "Konumumu Göster";
+        $("locateMeBtn").title = "";
+      }
+
+      if (now - lastLocationErrorAt > 15000) {
+        lastLocationErrorAt = now;
+
+        toast(
+          error.code === 1
+            ? "Konumu otomatik göstermek için tarayıcı konum iznini açın."
+            : error.code === 2
+              ? "GPS konumu belirlenemedi."
+              : "Konum alınırken zaman aşımı oluştu.",
+          5000
+        );
+      }
+    },
+
+    {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 3000
+    }
+  );
+}
+
+
+function stopAutoLocationTracking() {
+  if (locationWatchId !== null && navigator.geolocation) {
+    navigator.geolocation.clearWatch(locationWatchId);
+  }
+
+  locationWatchId = null;
+  autoLocationHasFix = false;
+
+  if ($("locateMeBtn")) {
+    $("locateMeBtn").textContent = "Konumumu Göster";
+    $("locateMeBtn").title = "";
+  }
 }
 
 
@@ -3756,28 +3897,14 @@ async function locateMe(
       await getDeviceLocation();
 
 
-    currentLocation =
-      location;
-
-
-    const accuracy =
-      Number.isFinite(
-        Number(
-          location.accuracy
-        )
-      )
-        ? ` ±${Math.round(location.accuracy)} m`
-        : "";
-
-
-    setText(
-      "currentLocationInfo",
-      `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)}${accuracy}`
+    updateCurrentLocationUI(
+      location
     );
 
 
     showLocationOnMap(
-      location
+      location,
+      true
     );
 
 
@@ -7453,6 +7580,8 @@ function wireEvents() {
     ?.addEventListener(
       "click",
       async () => {
+
+        stopAutoLocationTracking();
 
         await sb.auth.signOut();
 
