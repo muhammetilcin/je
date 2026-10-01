@@ -1710,3 +1710,61 @@ th {
     min-height:420px;
   }
 }
+
+
+/* ============================================================
+   NOKTA KONUM POPUP
+   ============================================================ */
+
+.point-location-popup{
+  display:grid;
+  gap:9px;
+  min-width:230px;
+}
+
+.point-location-popup-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+
+.point-location-popup-title strong{
+  font-size:15px;
+}
+
+.point-location-popup-meta{
+  display:grid;
+  gap:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+.point-location-popup-meta strong{
+  color:var(--text);
+  font-size:12px;
+}
+
+.point-location-popup-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:7px;
+}
+
+.point-location-popup-actions .point-popup-copy-btn{
+  grid-column:1 / -1;
+}
+
+.leaflet-popup-content{
+  margin:12px 14px;
+}
+
+@media(max-width:720px){
+  .point-location-popup-actions{
+    grid-template-columns:1fr;
+  }
+
+  .point-location-popup-actions .point-popup-copy-btn{
+    grid-column:auto;
+  }
+}
