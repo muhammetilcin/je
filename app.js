@@ -1937,29 +1937,61 @@ function renderDashboardMap() {
       );
 
 
-      marker.on(
-        "click",
-        () => {
-
-          activeProjectId =
-            point.project_id;
-
-
-          openProjectDetail(
-            point.project_id
-          );
-
-
-          setTimeout(
-            () =>
-              openBoreholeModal(
-                point.id
-              ),
-            200
-          );
-
+      marker.bindPopup(
+        () => pointLocationPopupHtml(point),
+        {
+          maxWidth: 330,
+          closeButton: true,
+          offset: [0, -4]
         }
       );
+
+      marker.on("click", () => {
+        marker.setPopupContent(pointLocationPopupHtml(point));
+        marker.openPopup();
+
+        if (!currentLocation) {
+          startAutoLocationTracking();
+        }
+      });
+
+      marker.on("popupopen", event => {
+        const popupElement = event.popup.getElement();
+        if (!popupElement) return;
+
+        popupElement.querySelector(".point-popup-detail-btn")?.addEventListener("click", () => {
+          dashboardMap?.closePopup();
+          activeProjectId = point.project_id;
+          openProjectDetail(point.project_id);
+
+          setTimeout(
+            () => openBoreholeModal(point.id),
+            220
+          );
+        });
+
+        popupElement.querySelector(".point-popup-route-btn")?.addEventListener("click", () => {
+          const lat = Number(point.latitude);
+          const lng = Number(point.longitude);
+
+          window.open(
+            `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat + "," + lng)}`,
+            "_blank",
+            "noopener"
+          );
+        });
+
+        popupElement.querySelector(".point-popup-copy-btn")?.addEventListener("click", async () => {
+          const textValue = `${Number(point.latitude).toFixed(7)}, ${Number(point.longitude).toFixed(7)}`;
+
+          try {
+            await navigator.clipboard.writeText(textValue);
+            toast("Nokta koordinatı kopyalandı.");
+          } catch {
+            toast(textValue, 5000);
+          }
+        });
+      });
 
 
       marker.addTo(
@@ -2890,6 +2922,152 @@ function renderBoreholes() {
 // İŞ DETAY HARİTASI
 // ============================================================
 
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const toRad = value => value * Math.PI / 180;
+  const earthRadius = 6371000;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLng / 2) *
+    Math.sin(dLng / 2);
+
+  return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+
+function formatPointDistance(point) {
+  if (!currentLocation) {
+    return "Mevcut GPS konumu alınırsa mesafe burada gösterilir.";
+  }
+
+  const meters = distanceMeters(
+    currentLocation.latitude,
+    currentLocation.longitude,
+    Number(point.latitude),
+    Number(point.longitude)
+  );
+
+  if (!Number.isFinite(meters)) {
+    return "Mesafe hesaplanamadı.";
+  }
+
+  if (meters < 1000) {
+    return `Konumunuza yaklaşık ${Math.round(meters)} m uzaklıkta`;
+  }
+
+  return `Konumunuza yaklaşık ${(meters / 1000).toFixed(2)} km uzaklıkta`;
+}
+
+
+function pointLocationPopupHtml(point) {
+  const lat = Number(point.latitude);
+  const lng = Number(point.longitude);
+  const type = point.point_type || "Sondaj";
+  const method = point.method ? ` · ${escapeHtml(point.method)}` : "";
+
+  return `
+    <div class="point-location-popup">
+      <div class="point-location-popup-title">
+        <strong>${escapeHtml(point.borehole_code)}</strong>
+        <span class="bh-status ${getStatusKey(point.status)}">${escapeHtml(point.status || "Planlandı")}</span>
+      </div>
+
+      <div class="point-location-popup-meta">
+        <span>${escapeHtml(type)}${method}</span>
+        <span>${lat.toFixed(7)}, ${lng.toFixed(7)}</span>
+        <strong>${escapeHtml(formatPointDistance(point))}</strong>
+      </div>
+
+      <div class="point-location-popup-actions">
+        <button
+          class="btn secondary mini point-popup-detail-btn"
+          type="button"
+          data-id="${point.id}"
+        >
+          Detay / Saha Girişi
+        </button>
+
+        <button
+          class="btn primary mini point-popup-route-btn"
+          type="button"
+          data-lat="${lat}"
+          data-lng="${lng}"
+        >
+          Yol Tarifi
+        </button>
+
+        <button
+          class="btn ghost mini point-popup-copy-btn"
+          type="button"
+          data-lat="${lat}"
+          data-lng="${lng}"
+        >
+          Koordinatı Kopyala
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+
+function bindPointLocationInteraction(marker, point, map) {
+  marker.bindPopup(
+    () => pointLocationPopupHtml(point),
+    {
+      maxWidth: 330,
+      closeButton: true,
+      offset: [0, -4]
+    }
+  );
+
+  marker.on("click", () => {
+    marker.setPopupContent(pointLocationPopupHtml(point));
+    marker.openPopup();
+
+    if (!currentLocation) {
+      startAutoLocationTracking();
+    }
+  });
+
+  marker.on("popupopen", event => {
+    const popupElement = event.popup.getElement();
+    if (!popupElement) return;
+
+    popupElement.querySelector(".point-popup-detail-btn")?.addEventListener("click", () => {
+      map?.closePopup();
+      openBoreholeModal(point.id);
+    });
+
+    popupElement.querySelector(".point-popup-route-btn")?.addEventListener("click", () => {
+      const lat = Number(point.latitude);
+      const lng = Number(point.longitude);
+
+      window.open(
+        `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat + "," + lng)}`,
+        "_blank",
+        "noopener"
+      );
+    });
+
+    popupElement.querySelector(".point-popup-copy-btn")?.addEventListener("click", async () => {
+      const textValue = `${Number(point.latitude).toFixed(7)}, ${Number(point.longitude).toFixed(7)}`;
+
+      try {
+        await navigator.clipboard.writeText(textValue);
+        toast("Nokta koordinatı kopyalandı.");
+      } catch {
+        toast(textValue, 5000);
+      }
+    });
+  });
+}
+
+
 function renderBoreholeMap() {
 
   if (
@@ -3046,12 +3224,10 @@ function renderBoreholeMap() {
         );
 
 
-        marker.on(
-          "click",
-          () =>
-            openBoreholeModal(
-              b.id
-            )
+        bindPointLocationInteraction(
+          marker,
+          b,
+          boreholeMap
         );
 
 
@@ -3334,12 +3510,10 @@ function renderMapProject() {
       );
 
 
-      marker.on(
-        "click",
-        () =>
-          openBoreholeModal(
-            point.id
-          )
+      bindPointLocationInteraction(
+        marker,
+        point,
+        mainMap
       );
 
 
