@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>BINA.kml</name>
+	<Style id="BINA">
+		<BalloonStyle>
+			<text><![CDATA[<b>$[name]<b/><br />$[description]]]></text>
+			<bgColor>ffe1ffff</bgColor>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff3636c0</color>
+		</LineStyle>
+		<PolyStyle>
+			<color>ff3636c0</color>
+		</PolyStyle>
+	</Style>
+	<Folder>
+		<name>BINA</name>
+		<LookAt>
+			<longitude>26.76985766635237</longitude>
+			<latitude>38.653836788572</latitude>
+			<altitude>0</altitude>
+			<heading>0</heading>
+			<tilt>45</tilt>
+			<range>100</range>
+		</LookAt>
+		<Placemark id="#1"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.76983075090775,38.65363258440584,10526.5712890625 26.77002208940417,38.65367605842255,10606.541015625</coordinates></LineString></Placemark>
+		<Placemark id="#2"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.77002208940417,38.65367605842255,10606.541015625 26.76995432792452,38.65385943732032,10614.9873046875</coordinates></LineString></Placemark>
+		<Placemark id="#3"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.76995432792452,38.65385943732032,10614.9873046875 26.76992245674833,38.65385219589466,10558.15234375</coordinates></LineString></Placemark>
+		<Placemark id="#4"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.76992245674833,38.65385219589466,10558.15234375 26.7698526927853,38.65404099273816,10444.9130859375</coordinates></LineString></Placemark>
+		<Placemark id="#5"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.7698526927853,38.65404099273816,10444.9130859375 26.76969324330057,38.65400476418173,10134.046875</coordinates></LineString></Placemark>
+		<Placemark id="#6"><styleUrl>#BINA</styleUrl><LineString><coordinates>26.76969324330057,38.65400476418173,10134.046875 26.76983075090775,38.65363258440584,10526.5712890625</coordinates></LineString></Placemark>
+	</Folder>
+</Document>
+</kml>
