@@ -2623,8 +2623,8 @@ function renderProjectDetailSummary() {
 
   setText(
     "detailBoundaryLayerInfo",
-    p.boundaryLayerName
-      ? `Yüklü: ${p.boundaryLayerName}`
+    p.boundaryLayerCount
+      ? `${p.boundaryLayerCount} çalışma alanı KML/KMZ yüklü`
       : "Yüklü çalışma alanı yok"
   );
 
@@ -2640,7 +2640,7 @@ function renderProjectDetailSummary() {
   if ($("detailDeleteBoundaryBtn")) {
 
     $("detailDeleteBoundaryBtn").disabled =
-      !p.boundaryLayerId;
+      !p.boundaryLayerCount;
 
   }
 
@@ -2651,6 +2651,9 @@ function renderProjectDetailSummary() {
       !p.boreholesLayerId;
 
   }
+
+
+  renderBoundaryLayerLists();
 }
 
 
@@ -3245,25 +3248,24 @@ function renderBoreholeMap() {
   if (p.boundary) {
 
     boreholeBoundaryLayer =
-      L.geoJSON(
-        p.boundary,
+      addProjectBoundariesToMap(
+        p,
+        boreholeMap,
         {
-          style: {
-            weight: 3,
-            fillOpacity: 0.05
-          }
+          weight: 3,
+          fillOpacity: 0.05
         }
-      )
-        .addTo(
-          boreholeMap
-        );
+      );
 
 
     try {
 
-      bounds.push(
-        boreholeBoundaryLayer.getBounds()
-      );
+      const boundaryBounds =
+        boreholeBoundaryLayer?.getBounds();
+
+      if (boundaryBounds?.isValid()) {
+        bounds.push(boundaryBounds);
+      }
 
     } catch {}
 
@@ -3546,8 +3548,8 @@ function renderMapProject() {
 
   setText(
     "boundaryLayerInfo",
-    p.boundaryLayerName
-      ? `Yüklü: ${p.boundaryLayerName}`
+    p.boundaryLayerCount
+      ? `${p.boundaryLayerCount} çalışma alanı KML/KMZ yüklü`
       : "Yüklü çalışma alanı yok"
   );
 
@@ -3560,29 +3562,39 @@ function renderMapProject() {
   );
 
 
+  if ($("deleteBoundaryLayerBtn")) {
+    $("deleteBoundaryLayerBtn").disabled = !p.boundaryLayerCount;
+  }
+
+  if ($("deleteBoreholeLayerBtn")) {
+    $("deleteBoreholeLayerBtn").disabled = !p.boreholesLayerId;
+  }
+
+  renderBoundaryLayerLists();
+
+
   const bounds = [];
 
 
   if (p.boundary) {
 
     mainBoundaryLayer =
-      L.geoJSON(
-        p.boundary,
+      addProjectBoundariesToMap(
+        p,
+        mainMap,
         {
-          style: {
-            weight: 3,
-            fillOpacity: 0.05
-          }
+          weight: 3,
+          fillOpacity: 0.05
         }
-      )
-        .addTo(
-          mainMap
-        );
+      );
 
 
-    bounds.push(
-      mainBoundaryLayer.getBounds()
-    );
+    const boundaryBounds =
+      mainBoundaryLayer?.getBounds();
+
+    if (boundaryBounds?.isValid()) {
+      bounds.push(boundaryBounds);
+    }
 
   }
 
@@ -5663,6 +5675,40 @@ async function replaceProjectLayer(
 }
 
 
+async function addOrReplaceBoundaryLayer(
+  projectId,
+  fileName,
+  geojson
+) {
+  const { error: deleteSameNameError } =
+    await sb
+      .from("project_layers")
+      .delete()
+      .eq("project_id", projectId)
+      .eq("layer_type", "boundary")
+      .eq("name", fileName);
+
+  if (deleteSameNameError) {
+    throw deleteSameNameError;
+  }
+
+  const { error } =
+    await sb
+      .from("project_layers")
+      .insert({
+        project_id: projectId,
+        layer_type: "boundary",
+        name: fileName,
+        geojson,
+        created_by: currentUser.id
+      });
+
+  if (error) {
+    throw error;
+  }
+}
+
+
 function boreholeCode(
   feature,
   index
@@ -5846,35 +5892,17 @@ async function importLayer(
   kind,
   inputId = null
 ) {
-
-  if (
-    currentRole !== "admin"
-  ) {
-
-    toast(
-      "Bu işlem yalnızca Yönetici rolüne açık."
-    );
-
+  if (currentRole !== "admin") {
+    toast("Bu işlem yalnızca Yönetici rolüne açık.");
     return;
   }
 
-
-  const p =
-    projects.find(
-      x =>
-        x.id === activeProjectId
-    );
-
+  const p = projects.find(x => x.id === activeProjectId);
 
   if (!p) {
-
-    toast(
-      "Önce bir iş seçin."
-    );
-
+    toast("Önce bir iş seçin.");
     return;
   }
-
 
   const input =
     inputId
@@ -5885,152 +5913,139 @@ async function importLayer(
             : $("boreholeFile")
         );
 
+  const files = [...(input?.files || [])];
 
-  const file =
-    input?.files?.[0];
-
-
-  if (!file) {
-
-    toast(
-      "Önce KML/KMZ dosyası seçin."
-    );
-
+  if (!files.length) {
+    toast("Önce KML/KMZ dosyası seçin.");
     return;
   }
 
-
   try {
+    if (kind === "boundary") {
+      let successCount = 0;
 
-    const raw =
-      await fileToGeoJSON(
-        file
-      );
+      for (const file of files) {
+        const raw = await fileToGeoJSON(file);
 
-
-    if (
-      kind === "boundary"
-    ) {
-
-      const features =
-        raw.features
-          .filter(
+        const features =
+          raw.features.filter(
             f =>
               [
                 "Polygon",
                 "MultiPolygon"
-              ]
-                .includes(
-                  f.geometry?.type
-                )
+              ].includes(f.geometry?.type)
           );
 
-
-      if (!features.length) {
-
-        throw new Error(
-          "Çalışma alanı poligonu bulunamadı."
-        );
-
-      }
-
-
-      await replaceProjectLayer(
-
-        p.id,
-
-        "boundary",
-
-        file.name,
-
-        {
-          type:
-            "FeatureCollection",
-          features
+        if (!features.length) {
+          throw new Error(
+            `${file.name}: çalışma alanı poligonu bulunamadı.`
+          );
         }
 
-      );
+        await addOrReplaceBoundaryLayer(
+          p.id,
+          file.name,
+          {
+            type: "FeatureCollection",
+            features
+          }
+        );
 
+        successCount++;
+      }
 
       toast(
-        "Çalışma alanı yüklendi."
+        successCount === 1
+          ? "Çalışma alanı KML/KMZ eklendi. Önceki çalışma alanları korundu."
+          : `${successCount} çalışma alanı KML/KMZ eklendi. Önceki katmanlar korundu.`
       );
 
     } else {
+      const file = files[0];
+      const raw = await fileToGeoJSON(file);
 
       const features =
-        raw.features
-          .filter(
-            f =>
-              [
-                "Point",
-                "MultiPoint"
-              ]
-                .includes(
-                  f.geometry?.type
-                )
-          );
-
+        raw.features.filter(
+          f =>
+            [
+              "Point",
+              "MultiPoint"
+            ].includes(f.geometry?.type)
+        );
 
       if (!features.length) {
-
         throw new Error(
           "Sondaj noktası bulunamadı."
         );
-
       }
 
-
       const geojson = {
-        type:
-          "FeatureCollection",
+        type: "FeatureCollection",
         features
       };
 
-
       await replaceProjectLayer(
-
         p.id,
-
         "boreholes",
-
         file.name,
-
         geojson
-
       );
-
 
       await syncBoreholeRecords(
         p.id,
         geojson
       );
 
-
       toast(
         `${features.length} sondaj noktası yüklendi.`
       );
-
     }
 
-
-    input.value =
-      "";
-
-
+    input.value = "";
     await loadAppData();
 
   } catch (err) {
-
     console.error(err);
-
 
     toast(
       err.message ||
       "Dosya içe aktarılamadı.",
       5000
     );
+  }
+}
 
+async function deleteBoundaryLayerById(
+  layerId,
+  layerName = ""
+) {
+  if (currentRole !== "admin") return;
+
+  const label = layerName || "Bu çalışma alanı KML/KMZ katmanı";
+
+  if (!window.confirm(`"${label}" silinsin mi?`)) {
+    return;
+  }
+
+  try {
+    const { error } =
+      await sb
+        .from("project_layers")
+        .delete()
+        .eq("id", layerId);
+
+    if (error) throw error;
+
+    await loadAppData();
+    toast("Çalışma alanı katmanı silindi.");
+
+  } catch (err) {
+    console.error(err);
+    toast(
+      err.message ||
+      "Çalışma alanı katmanı silinemedi.",
+      5000
+    );
   }
 }
 
@@ -6038,81 +6053,87 @@ async function importLayer(
 async function deleteProjectLayer(
   layerType
 ) {
-
-  const p =
-    projects.find(
-      x =>
-        x.id === activeProjectId
-    );
-
+  const p = projects.find(x => x.id === activeProjectId);
 
   if (!p) return;
 
+  if (layerType === "boundary") {
+    const ids = p.boundaryLayerIds || [];
 
-  const id =
-    layerType === "boundary"
-      ? p.boundaryLayerId
-      : p.boreholesLayerId;
+    if (!ids.length) {
+      toast("Silinecek çalışma alanı katmanı bulunamadı.");
+      return;
+    }
 
+    if (
+      !window.confirm(
+        `Bu işe ait ${ids.length} çalışma alanı KML/KMZ katmanının tamamı silinsin mi?`
+      )
+    ) {
+      return;
+    }
 
-  if (!id) {
+    try {
+      const { error } =
+        await sb
+          .from("project_layers")
+          .delete()
+          .eq("project_id", p.id)
+          .eq("layer_type", "boundary");
 
-    toast(
-      "Silinecek katman bulunamadı."
-    );
+      if (error) throw error;
+
+      await loadAppData();
+      toast("Tüm çalışma alanı katmanları silindi.");
+
+    } catch (err) {
+      console.error(err);
+      toast(
+        err.message ||
+        "Çalışma alanı katmanları silinemedi.",
+        5000
+      );
+    }
 
     return;
   }
 
+  const id = p.boreholesLayerId;
 
-  const message =
-    layerType === "boreholes"
-
-      ? "Sondaj KML/KMZ katmanı silinsin mi?\n\nSaha kayıtları korunacaktır."
-
-      : "Çalışma alanı KML/KMZ katmanı silinsin mi?";
-
+  if (!id) {
+    toast("Silinecek sondaj katmanı bulunamadı.");
+    return;
+  }
 
   if (
     !window.confirm(
-      message
+      "Sondaj KML/KMZ katmanı silinsin mi?\n\nSaha kayıtları korunacaktır."
     )
   ) {
     return;
   }
 
+  try {
+    const { error } =
+      await sb
+        .from("project_layers")
+        .delete()
+        .eq("id", id);
 
-  const {
-    error
-  } =
-    await sb
-      .from("project_layers")
-      .delete()
-      .eq(
-        "id",
-        id
-      );
+    if (error) throw error;
 
+    await loadAppData();
+    toast("Sondaj katmanı silindi.");
 
-  if (error) {
-
+  } catch (err) {
+    console.error(err);
     toast(
-      error.message,
+      err.message ||
+      "Sondaj katmanı silinemedi.",
       5000
     );
-
-    return;
   }
-
-
-  await loadAppData();
-
-
-  toast(
-    "Katman silindi."
-  );
 }
-
 
 // ============================================================
 // PROJE OLUŞTUR / DÜZENLE
