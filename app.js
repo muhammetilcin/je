@@ -42,6 +42,7 @@ let lastLocationErrorAt = 0;
 let pickingPointFromMap = false;
 
 let mapsInitialized = false;
+let focaFireStationBinaSyncAttempted = false;
 
 
 // ============================================================
@@ -705,6 +706,159 @@ async function enterSession(user) {
 
 
 // ============================================================
+// FOÇA İTFAİYE - YERLEŞİK BINA KML
+// ============================================================
+
+function normalizeProjectName(value = "") {
+  return String(value)
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+
+async function ensureFocaFireStationBinaLayer(
+  projectRows,
+  layers
+) {
+  if (
+    focaFireStationBinaSyncAttempted ||
+    currentRole !== "admin"
+  ) {
+    return;
+  }
+
+  const target =
+    (projectRows || []).find(row => {
+      const name = normalizeProjectName(row.short_name);
+      return name.includes("foca") && name.includes("itfaiye");
+    });
+
+  if (!target) {
+    return;
+  }
+
+  focaFireStationBinaSyncAttempted = true;
+
+  const exists =
+    (layers || []).some(
+      layer =>
+        layer.project_id === target.id &&
+        layer.layer_type === "boundary" &&
+        normalizeProjectName(layer.name) === "bina kml"
+    );
+
+  if (exists) {
+    return;
+  }
+
+  try {
+    const response =
+      await fetch(
+        "./data/foca-itfaiye/BINA.kml",
+        {
+          cache: "no-store"
+        }
+      );
+
+    if (!response.ok) {
+      throw new Error(
+        `BINA.kml okunamadı (HTTP ${response.status}).`
+      );
+    }
+
+    const kmlText =
+      await response.text();
+
+    const xml =
+      new DOMParser()
+        .parseFromString(
+          kmlText,
+          "text/xml"
+        );
+
+    if (xml.querySelector("parsererror")) {
+      throw new Error("BINA.kml okunamadı.");
+    }
+
+    const raw =
+      toGeoJSON.kml(xml);
+
+    const features =
+      (raw.features || []).filter(
+        feature =>
+          [
+            "LineString",
+            "MultiLineString",
+            "Polygon",
+            "MultiPolygon"
+          ].includes(feature.geometry?.type)
+      );
+
+    if (!features.length) {
+      throw new Error(
+        "BINA.kml içinde çizilebilir geometri bulunamadı."
+      );
+    }
+
+    const geojson = {
+      type: "FeatureCollection",
+      features
+    };
+
+    const {
+      data: createdLayer,
+      error
+    } =
+      await sb
+        .from("project_layers")
+        .insert({
+          project_id: target.id,
+          layer_type: "boundary",
+          name: "BINA.kml",
+          geojson,
+          created_by: currentUser.id
+        })
+        .select(
+          "id,project_id,layer_type,name,geojson"
+        )
+        .single();
+
+    if (error) {
+      throw error;
+    }
+
+    if (createdLayer) {
+      layers.push(createdLayer);
+    }
+
+    toast(
+      "BINA.kml Foça İtfaiye çalışma alanına eklendi.",
+      5000
+    );
+
+  } catch (err) {
+    console.error(
+      "Foça İtfaiye BINA.kml otomatik ekleme hatası:",
+      err
+    );
+
+    toast(
+      err.message ||
+      "BINA.kml Foça İtfaiye alanına eklenemedi.",
+      7000
+    );
+  }
+}
+
+
+// ============================================================
 // VERİLERİ YÜKLE
 // ============================================================
 
@@ -829,6 +983,12 @@ async function loadAppData() {
       layerRows || [];
 
   }
+
+
+  await ensureFocaFireStationBinaLayer(
+    projectRows,
+    layers
+  );
 
 
   // SAHA NOKTALARI
