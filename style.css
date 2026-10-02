@@ -1768,3 +1768,56 @@ th {
     grid-column:auto;
   }
 }
+
+
+/* ============================================================
+   ÇOKLU ÇALIŞMA ALANI KML/KMZ
+   ============================================================ */
+
+.boundary-layer-list{
+  display:grid;
+  gap:7px;
+  margin-top:8px;
+}
+
+.boundary-layer-item{
+  display:grid;
+  grid-template-columns:12px minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+  padding:8px 9px;
+  border:1px solid var(--border);
+  border-radius:9px;
+  background:#fff;
+}
+
+.boundary-layer-swatch{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+}
+
+.boundary-layer-name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:12px;
+  font-weight:700;
+  color:var(--text);
+}
+
+.leaflet-tooltip.boundary-label{
+  background:rgba(255,255,255,.94);
+  border:1px solid rgba(0,0,0,.18);
+  border-radius:6px;
+  box-shadow:0 1px 5px rgba(0,0,0,.1);
+  color:#26332f;
+  font-weight:700;
+  font-size:11px;
+  padding:3px 6px;
+}
+
+.leaflet-tooltip.boundary-label::before{
+  display:none;
+}
