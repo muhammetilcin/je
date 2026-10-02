@@ -930,15 +930,29 @@ async function loadAppData() {
       .map(
         row => {
 
-          const boundaryLayer =
+          const boundaryLayers =
             layers
               .filter(
                 x =>
                   x.project_id === row.id &&
                   x.layer_type === "boundary"
-              )
-              .at(-1) ||
+              );
+
+
+          const boundaryLayer =
+            boundaryLayers.at(-1) ||
             null;
+
+
+          const mergedBoundary =
+            boundaryLayers.length
+              ? {
+                  type: "FeatureCollection",
+                  features: boundaryLayers.flatMap(
+                    layer => layer.geojson?.features || []
+                  )
+                }
+              : null;
 
 
           const boreholesLayer =
@@ -985,8 +999,16 @@ async function loadAppData() {
               ),
 
             boundary:
-              boundaryLayer?.geojson ||
-              null,
+              mergedBoundary,
+
+            boundaryLayers:
+              boundaryLayers.map(
+                layer => ({
+                  id: layer.id,
+                  name: layer.name || "Çalışma alanı",
+                  geojson: layer.geojson
+                })
+              ),
 
             boreholes:
               boreholesLayer?.geojson ||
@@ -996,9 +1018,16 @@ async function loadAppData() {
               boundaryLayer?.id ||
               null,
 
+            boundaryLayerIds:
+              boundaryLayers.map(layer => layer.id),
+
             boundaryLayerName:
-              boundaryLayer?.name ||
-              "",
+              boundaryLayers.length
+                ? boundaryLayers.map(layer => layer.name || "Çalışma alanı").join(", ")
+                : "",
+
+            boundaryLayerCount:
+              boundaryLayers.length,
 
             boreholesLayerId:
               boreholesLayer?.id ||
@@ -1811,6 +1840,119 @@ function renderDashboardPointSummary() {
 // ANA NOKTALAR HARİTASI
 // ============================================================
 
+const BOUNDARY_COLORS = [
+  "#0f766e",
+  "#7c3aed",
+  "#d97706",
+  "#2563eb",
+  "#dc2626",
+  "#9333ea"
+];
+
+
+function addProjectBoundariesToMap(
+  project,
+  map,
+  options = {}
+) {
+  if (!project || !map) return null;
+
+  const items =
+    project.boundaryLayers?.length
+      ? project.boundaryLayers
+      : (
+          project.boundary
+            ? [{
+                id: project.boundaryLayerId || "legacy",
+                name: project.boundaryLayerName || "Çalışma alanı",
+                geojson: project.boundary
+              }]
+            : []
+        );
+
+  if (!items.length) return null;
+
+  const group = L.featureGroup();
+
+  items.forEach((item, index) => {
+    if (!item.geojson) return;
+
+    const color = BOUNDARY_COLORS[index % BOUNDARY_COLORS.length];
+
+    const layer = L.geoJSON(
+      item.geojson,
+      {
+        style: {
+          color,
+          fillColor: color,
+          weight: options.weight ?? 3,
+          fillOpacity: options.fillOpacity ?? 0.05
+        }
+      }
+    );
+
+    layer.bindTooltip(
+      escapeHtml(item.name || `Çalışma alanı ${index + 1}`),
+      {
+        direction: "center",
+        sticky: true,
+        className: "boundary-label"
+      }
+    );
+
+    if (typeof options.onClick === "function") {
+      layer.on("click", options.onClick);
+    }
+
+    layer.addTo(group);
+  });
+
+  group.addTo(map);
+  return group;
+}
+
+
+function renderBoundaryLayerLists() {
+  const p = projects.find(x => x.id === activeProjectId);
+  const layers = p?.boundaryLayers || [];
+
+  const renderList = targetId => {
+    const target = $(targetId);
+    if (!target) return;
+
+    if (!layers.length) {
+      target.innerHTML = '<span class="muted">Yüklü çalışma alanı yok.</span>';
+      return;
+    }
+
+    target.innerHTML = layers.map((layer, index) => `
+      <div class="boundary-layer-item">
+        <span class="boundary-layer-swatch" style="background:${BOUNDARY_COLORS[index % BOUNDARY_COLORS.length]}"></span>
+        <span class="boundary-layer-name">${escapeHtml(layer.name || `Çalışma alanı ${index + 1}`)}</span>
+        <button
+          class="btn danger mini delete-single-boundary-btn"
+          type="button"
+          data-id="${layer.id}"
+          data-name="${encodeURIComponent(layer.name || "")}"
+        >
+          Sil
+        </button>
+      </div>
+    `).join("");
+  };
+
+  renderList("detailBoundaryLayerList");
+  renderList("boundaryLayerList");
+
+  document.querySelectorAll(".delete-single-boundary-btn").forEach(btn => {
+    btn.onclick = () => deleteBoundaryLayerById(
+      btn.dataset.id,
+      decodeURIComponent(btn.dataset.name || "")
+    );
+  });
+}
+
+
 function renderDashboardMap() {
 
   if (
@@ -1846,37 +1988,23 @@ function renderDashboardMap() {
 
 
       const boundary =
-        L.geoJSON(
-          p.boundary,
+        addProjectBoundariesToMap(
+          p,
+          dashboardDataLayer,
           {
-            style: {
-              weight: 2,
-              fillOpacity: 0.03
-            }
+            weight: 2,
+            fillOpacity: 0.03,
+            onClick: () => openProjectDetail(p.id)
           }
         );
-
-
-      boundary.on(
-        "click",
-        () =>
-          openProjectDetail(
-            p.id
-          )
-      );
-
-
-      boundary.addTo(
-        dashboardDataLayer
-      );
 
 
       try {
 
         const b =
-          boundary.getBounds();
+          boundary?.getBounds();
 
-        if (b.isValid()) {
+        if (b?.isValid()) {
           bounds.push(b);
         }
 
