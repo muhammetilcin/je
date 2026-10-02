@@ -854,18 +854,23 @@
                 Çalışma alanı KML/KMZ
               </label>
 
+              <small class="muted">
+                Birden fazla KML/KMZ seçebilirsiniz. Yeni dosyalar mevcut çalışma alanlarını silmez.
+              </small>
+
               <input
                 id="boundaryFile"
                 type="file"
                 accept=".kml,.kmz"
                 class="file-input"
+                multiple
               />
 
               <button
                 id="importBoundaryBtn"
                 class="btn secondary full"
               >
-                Yükle / Değiştir
+                + Çalışma Alanı Ekle
               </button>
 
 
@@ -880,10 +885,15 @@
                   class="btn danger mini"
                   type="button"
                 >
-                  Sil
+                  Tümünü Sil
                 </button>
 
               </div>
+
+              <div
+                id="boundaryLayerList"
+                class="boundary-layer-list"
+              ></div>
 
             </div>
 
@@ -1244,11 +1254,16 @@
                   Çalışma alanı KML/KMZ
                 </label>
 
+                <small class="muted">
+                  İkinci, üçüncü veya daha fazla çalışma alanı ekleyebilirsiniz. Önceki KML'ler korunur.
+                </small>
+
                 <input
                   id="detailBoundaryFile"
                   type="file"
                   accept=".kml,.kmz"
                   class="file-input"
+                  multiple
                 />
 
                 <button
@@ -1256,7 +1271,7 @@
                   class="btn secondary full"
                   type="button"
                 >
-                  Yükle / Değiştir
+                  + Çalışma Alanı Ekle
                 </button>
 
 
@@ -1271,10 +1286,15 @@
                     class="btn danger mini"
                     type="button"
                   >
-                    Sil
+                    Tümünü Sil
                   </button>
 
                 </div>
+
+                <div
+                  id="detailBoundaryLayerList"
+                  class="boundary-layer-list"
+                ></div>
 
               </div>
 
